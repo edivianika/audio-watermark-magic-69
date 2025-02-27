@@ -4,7 +4,7 @@
  */
 
 // External watermark URL
-const WATERMARK_URL = "https://od.lk/s/OF8xOTE3NDEyMTJf/Trial%20Version.mp3";
+const WATERMARK_URL = "https://od.lk/d/OF8xOTE3NDEyMTJf/Trial%20Version.mp3";
 
 // Convert base64 to file with improved error handling
 export const base64ToFile = async (base64String: string, filename: string) => {
