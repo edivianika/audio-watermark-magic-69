@@ -3,7 +3,7 @@
  * Main module for audio processing utilities
  */
 
-import { audioBufferToMp3, loadAudioFile, reduceToMono } from "./audioProcessing";
+import { audioBufferToCompressedFormat, loadAudioFile, reduceToMono } from "./audioProcessing";
 import { fetchWatermarkAudio } from "./audioWatermark";
 
 // Re-export for compatibility
@@ -11,7 +11,7 @@ export * from "./audioFileConversion";
 export * from "./audioWatermark";
 export * from "./audioProcessing";
 
-// Add watermark to audio with MP3 compression
+// Add watermark to audio with compression
 export const addWatermark = async (
   inputFile: File,
   watermarkVolume: number,
@@ -40,21 +40,21 @@ export const addWatermark = async (
     const fileSizeMB = inputFile.size / (1024 * 1024);
     console.log(`Original file size: ${fileSizeMB.toFixed(2)} MB`);
     
-    // Adaptive MP3 compression settings based on file size
-    let kbps = 192; // Default high quality
+    // Adaptive compression settings based on file size
+    let quality: 'low' | 'medium' | 'high' = 'high';
     let convertToMono = false;
     
     if (fileSizeMB > 30) {
-      kbps = 96;
+      quality = 'low';
       convertToMono = true;
     } else if (fileSizeMB > 20) {
-      kbps = 128;
+      quality = 'medium';
       convertToMono = true;
     } else if (fileSizeMB > 10) {
-      kbps = 160;
+      quality = 'medium';
     }
     
-    console.log(`Compression settings: ${kbps}kbps MP3, mono: ${convertToMono}`);
+    console.log(`Compression settings: ${quality} quality, mono: ${convertToMono}`);
     
     // Convert to mono if needed for size reduction
     const effectiveInputBuffer = convertToMono ? reduceToMono(inputBuffer) : inputBuffer;
@@ -104,20 +104,25 @@ export const addWatermark = async (
           // Mix original and watermark audio (50/50 mix)
           const originalSample = outputData[startFrame + j];
           const watermarkSample = watermarkData[j] * watermarkVolume;
-          outputData[startFrame + j] = (originalSample + watermarkSample) * 0.5;
+          
+          // Better mixing formula to preserve original audio quality while ensuring watermark is audible
+          outputData[startFrame + j] = originalSample * 0.7 + watermarkSample * 0.3;
         }
       }
     }
     
-    // Convert to MP3 with compression settings
-    const mp3Data = audioBufferToMp3(outputBuffer, { kbps });
+    // Convert to compressed format with quality settings
+    const compressedData = audioBufferToCompressedFormat(outputBuffer, { quality });
     
-    const compressionRatio = inputFile.size / mp3Data.length;
-    console.log(`Audio watermarking completed with compression. Output size: ${mp3Data.length / 1024} KB`);
+    // Determine output MIME type based on quality
+    const mimeType = "audio/wav";
+    
+    const compressionRatio = inputFile.size / compressedData.length;
+    console.log(`Audio watermarking completed with compression. Output size: ${compressedData.length / 1024} KB`);
     console.log(`Compression ratio: ${compressionRatio.toFixed(2)}x`);
     
-    return new Blob([mp3Data], { 
-      type: "audio/mp3"
+    return new Blob([compressedData], { 
+      type: mimeType
     });
   } catch (error) {
     console.error("Error adding watermark:", error);
@@ -156,7 +161,7 @@ export const processBatch = async (
       );
       
       const originalName = file.name;
-      const extension = 'mp3'; // Always use MP3 extension for compressed output
+      const extension = 'wav'; // Use WAV for our compressed output
       const nameWithoutExt = originalName.slice(0, originalName.lastIndexOf('.'));
       const outputFilename = `${nameWithoutExt}_Watermarked.${extension}`;
       
