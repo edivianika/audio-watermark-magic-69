@@ -142,14 +142,14 @@ export const fetchAudioFile = async (url: string, filename: string): Promise<Fil
   }
 };
 
-// Add watermark to audio with compression
+// Add watermark to audio with improved compression for better quality
 export const addWatermark = async (
   inputFile: File,
   watermarkVolume: number,
   watermarkInterval: number
 ): Promise<Blob> => {
   try {
-    console.log("Starting audio watermarking process");
+    console.log("Starting audio watermarking process with improved quality");
     console.log(`Watermark settings: Volume=${watermarkVolume}, Interval=${watermarkInterval}s`);
     
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -176,30 +176,34 @@ export const addWatermark = async (
         inputBuffer.sampleRate
       );
       
-      // Apply stronger compression settings for better file size reduction
-      const compressionRatio = 8; // Higher ratio for more compression (was 4)
-      const threshold = 0.25; // Lower threshold for more compression (was 0.3)
-      const attackTime = 0.001; // Faster attack for more efficient compression
-      const releaseTime = 0.1; // Faster release
-      
-      // Enhanced high-frequency damping for better compression
-      const highFreqDampingFactor = 0.4; // Reduce high frequencies to improve compression
+      // IMPROVED: More balanced compression settings for better audio clarity
+      const compressionRatio = 3.5; // Reduced from 8 for less aggressive compression
+      const threshold = 0.35; // Increased from 0.25 for better sound quality
+      const highFreqDampingFactor = 0.2; // Reduced from 0.4 to preserve more high frequencies
 
-      // Copy and process the input audio with watermark and compression
+      // Copy and process the input audio without excessive filtering
       for (let channel = 0; channel < inputBuffer.numberOfChannels; channel++) {
         const inputData = inputBuffer.getChannelData(channel);
         const outputData = outputBuffer.getChannelData(channel);
         
-        // Apply high frequency damping and initial compression to input data
-        for (let i = 1; i < inputData.length; i++) {
-          // Simple high-pass filter to reduce high frequencies
-          outputData[i] = inputData[i] * (1 - highFreqDampingFactor) + 
-                         (inputData[i] - inputData[i-1]) * highFreqDampingFactor;
-                         
-          // Apply initial compression
+        // Use a more gentle processing approach for better audio quality
+        for (let i = 0; i < inputData.length; i++) {
+          // Mostly copy the original audio with minimal high-freq damping
+          if (i > 0) {
+            // Gentler high-frequency treatment
+            outputData[i] = inputData[i] * (1 - highFreqDampingFactor * 0.5) + 
+                           (inputData[i] - inputData[i-1]) * highFreqDampingFactor * 0.5;
+          } else {
+            outputData[i] = inputData[i];
+          }
+          
+          // Light compression only on extreme peaks
           if (Math.abs(outputData[i]) > threshold) {
-            const compressedValue = threshold + (Math.abs(outputData[i]) - threshold) / compressionRatio;
-            outputData[i] = outputData[i] > 0 ? compressedValue : -compressedValue;
+            const difference = Math.abs(outputData[i]) - threshold;
+            const compressedDifference = difference / compressionRatio;
+            outputData[i] = outputData[i] > 0 
+              ? threshold + compressedDifference 
+              : -threshold - compressedDifference;
           }
         }
       }
@@ -221,73 +225,97 @@ export const addWatermark = async (
           const outputData = outputBuffer.getChannelData(channel);
           const watermarkData = watermarkBuffer.getChannelData(channel);
           
-          for (let j = 0; j < watermarkBuffer.length; j++) {
-            // Apply compression to the watermark
-            let sample = watermarkData[j] * watermarkVolume;
-            if (Math.abs(sample) > threshold) {
-              const compressedValue = threshold + (Math.abs(sample) - threshold) / compressionRatio;
-              sample = sample > 0 ? compressedValue : -compressedValue;
-            }
-            outputData[startFrame + j] += sample;
-          }
-        }
-      }
-      
-      // Apply final compression and downsampling to the entire output
-      const downsampleFactor = 1.5; // Reduce sample density (lower quality but smaller file)
-      const downsampledLength = Math.floor(outputBuffer.length / downsampleFactor);
-      const downsampledBuffer = audioContext.createBuffer(
-        outputBuffer.numberOfChannels,
-        downsampledLength,
-        Math.floor(outputBuffer.sampleRate / downsampleFactor)
-      );
-      
-      // Apply aggressive compression and downsampling
-      for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
-        const outputData = outputBuffer.getChannelData(channel);
-        const downsampledData = downsampledBuffer.getChannelData(channel);
-        
-        for (let i = 0; i < downsampledLength; i++) {
-          const sourceIndex = Math.floor(i * downsampleFactor);
-          // Simple linear interpolation for smoother downsampling
-          const value = outputData[sourceIndex];
+          // Add watermark with smooth fade in/out to prevent pops and clicks
+          const fadeLength = Math.min(4000, watermarkBuffer.length / 10); // Fade duration in samples
           
-          // Apply final extreme compression for smaller file size
-          if (Math.abs(value) > threshold * 0.8) {
-            const compressedValue = threshold * 0.8 + (Math.abs(value) - threshold * 0.8) / (compressionRatio * 1.5);
-            downsampledData[i] = value > 0 ? compressedValue : -compressedValue;
-          } else {
-            downsampledData[i] = value;
+          for (let j = 0; j < watermarkBuffer.length; j++) {
+            // Calculate fade factor (0 to 1)
+            let fadeFactor = 1;
+            if (j < fadeLength) {
+              fadeFactor = j / fadeLength; // Fade in
+            } else if (j > watermarkBuffer.length - fadeLength) {
+              fadeFactor = (watermarkBuffer.length - j) / fadeLength; // Fade out
+            }
+            
+            // Apply volume and fade to watermark
+            let sample = watermarkData[j] * watermarkVolume * fadeFactor;
+            
+            // Apply gentle compression to the watermark if needed
+            if (Math.abs(sample) > threshold) {
+              const difference = Math.abs(sample) - threshold;
+              const compressedDifference = difference / compressionRatio;
+              sample = sample > 0 ? threshold + compressedDifference : -threshold - compressedDifference;
+            }
+            
+            // Mix watermark more gently
+            outputData[startFrame + j] = outputData[startFrame + j] * 0.85 + sample * 0.15;
           }
         }
       }
       
-      // Normalize to prevent clipping
+      // IMPROVED: Use a more balanced approach for reducing file size
+      // Apply moderate downsampling only if the file is large
+      let finalBuffer = outputBuffer;
+      if (inputBuffer.length > 1000000) { // Only for longer files
+        const downsampleFactor = 1.2; // Reduced from 1.5 for better quality
+        const downsampledLength = Math.floor(outputBuffer.length / downsampleFactor);
+        const downsampledBuffer = audioContext.createBuffer(
+          outputBuffer.numberOfChannels,
+          downsampledLength,
+          Math.floor(outputBuffer.sampleRate / downsampleFactor)
+        );
+        
+        // Use better interpolation for smoother downsampling
+        for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
+          const outputData = outputBuffer.getChannelData(channel);
+          const downsampledData = downsampledBuffer.getChannelData(channel);
+          
+          for (let i = 0; i < downsampledLength; i++) {
+            const exactIndex = i * downsampleFactor;
+            const indexFloor = Math.floor(exactIndex);
+            const indexCeil = Math.min(indexFloor + 1, outputData.length - 1);
+            const fraction = exactIndex - indexFloor;
+            
+            // Linear interpolation for smoother audio
+            downsampledData[i] = outputData[indexFloor] * (1 - fraction) + outputData[indexCeil] * fraction;
+          }
+        }
+        
+        finalBuffer = downsampledBuffer;
+      }
+      
+      // Normalize audio levels to prevent clipping but preserve dynamics
       let maxValue = 0;
-      for (let channel = 0; channel < downsampledBuffer.numberOfChannels; channel++) {
-        const outputData = downsampledBuffer.getChannelData(channel);
+      for (let channel = 0; channel < finalBuffer.numberOfChannels; channel++) {
+        const outputData = finalBuffer.getChannelData(channel);
         for (let i = 0; i < outputData.length; i++) {
           maxValue = Math.max(maxValue, Math.abs(outputData[i]));
         }
       }
       
-      if (maxValue > 1.0) {
+      if (maxValue > 0.95) {
         const scale = 0.95 / maxValue;
         console.log(`Normalizing audio with scale factor: ${scale}`);
         
-        for (let channel = 0; channel < downsampledBuffer.numberOfChannels; channel++) {
-          const outputData = downsampledBuffer.getChannelData(channel);
+        for (let channel = 0; channel < finalBuffer.numberOfChannels; channel++) {
+          const outputData = finalBuffer.getChannelData(channel);
           for (let i = 0; i < outputData.length; i++) {
             outputData[i] *= scale;
           }
         }
       }
       
-      // Convert to MP3 if Web Audio API supports it, otherwise fallback to WAV with reduced bitrate
-      const finalAudio = audioBufferToWav(downsampledBuffer, { bitDepth: 8 }); // Reduced bit depth for smaller files
-      console.log("Audio watermarking and compression completed successfully");
+      // Choose output format based on file size needs
+      const outputOptions = { bitDepth: 16 }; // Default to 16-bit for better quality
       
-      // Create compressed audio blob with reduced quality
+      // Use 12-bit encoding for very large files to save space
+      if (inputFile.size > 10 * 1024 * 1024) { // For files larger than 10MB
+        outputOptions.bitDepth = 12;
+      }
+      
+      const finalAudio = audioBufferToWav(finalBuffer, outputOptions);
+      console.log("Audio watermarking completed with optimized quality");
+      
       return new Blob([finalAudio], { 
         type: "audio/wav"
       });
@@ -319,49 +347,83 @@ const loadAudioFile = async (audioContext: AudioContext, file: File): Promise<Au
   });
 };
 
-// Helper function to convert AudioBuffer to WAV format with compression options
+// Enhanced audioBufferToWav function with better quality options
 const audioBufferToWav = (buffer: AudioBuffer, options: { bitDepth?: number } = {}): Uint8Array => {
   const numOfChan = buffer.numberOfChannels;
-  const bitDepth = options.bitDepth || 16; // Allow 8-bit for smaller files
-  const bytesPerSample = bitDepth / 8;
+  const bitDepth = options.bitDepth || 16; // Default to 16-bit for better quality
+  
+  // Support for 12-bit encoding (stored as 16-bit with reduced precision)
+  const effectiveBitDepth = [8, 12, 16, 24, 32].includes(bitDepth) ? bitDepth : 16;
+  const bytesPerSample = Math.ceil(effectiveBitDepth / 8);
+  
   const length = buffer.length * numOfChan * bytesPerSample;
   const result = new Uint8Array(44 + length);
   const view = new DataView(result.buffer);
   
+  // Write WAV header
   writeString(view, 0, 'RIFF');
   view.setUint32(4, 36 + length, true);
   writeString(view, 8, 'WAVE');
   writeString(view, 12, 'fmt ');
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
+  view.setUint16(20, 1, true); // PCM format
   view.setUint16(22, numOfChan, true);
   view.setUint32(24, buffer.sampleRate, true);
   view.setUint32(28, buffer.sampleRate * bytesPerSample * numOfChan, true);
   view.setUint16(32, numOfChan * bytesPerSample, true);
-  view.setUint16(34, bitDepth, true);
+  view.setUint16(34, bytesPerSample * 8, true); // Bits per sample
   writeString(view, 36, 'data');
   view.setUint32(40, length, true);
 
   let offset = 44;
   
-  // Use 8-bit or 16-bit processing based on settings
+  // Write audio data with appropriate bit depth
   if (bitDepth === 8) {
     for (let i = 0; i < buffer.length; i++) {
       for (let channel = 0; channel < numOfChan; channel++) {
-        // Convert to 8-bit unsigned (0-255)
+        // 8-bit unsigned PCM (0-255)
         const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
-        const intSample = Math.floor((sample + 1) * 127.5);
+        const intSample = Math.round((sample + 1) * 127.5);
         view.setUint8(offset, intSample);
         offset += 1;
       }
     }
-  } else {
+  } else if (bitDepth === 12) {
+    // 12-bit is stored in 16-bit format with reduced precision
     for (let i = 0; i < buffer.length; i++) {
       for (let channel = 0; channel < numOfChan; channel++) {
         const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
-        const intSample = Math.floor(sample < 0 ? sample * 32768 : sample * 32767);
+        // Scale to 12-bit range (-2048 to 2047) instead of 16-bit
+        let intSample = Math.round(sample < 0 ? sample * 2048 : sample * 2047);
+        // Shift to use 16-bit storage (4 bits of padding)
+        intSample = intSample << 4;
         view.setInt16(offset, intSample, true);
         offset += 2;
+      }
+    }
+  } else {
+    // 16-bit or higher
+    for (let i = 0; i < buffer.length; i++) {
+      for (let channel = 0; channel < numOfChan; channel++) {
+        const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
+        
+        if (bitDepth === 16) {
+          // Standard 16-bit PCM
+          const intSample = Math.round(sample < 0 ? sample * 32768 : sample * 32767);
+          view.setInt16(offset, intSample, true);
+          offset += 2;
+        } else if (bitDepth === 24) {
+          // 24-bit PCM
+          const intSample = Math.round(sample < 0 ? sample * 8388608 : sample * 8388607);
+          view.setUint8(offset, intSample & 0xFF);
+          view.setUint8(offset + 1, (intSample >> 8) & 0xFF);
+          view.setUint8(offset + 2, (intSample >> 16) & 0xFF);
+          offset += 3;
+        } else if (bitDepth === 32) {
+          // 32-bit float (not PCM)
+          view.setFloat32(offset, sample, true);
+          offset += 4;
+        }
       }
     }
   }
@@ -383,3 +445,4 @@ export const generateUniqueFilename = (originalName: string): string => {
   const extension = originalName.split('.').pop();
   return `watermarked_${timestamp}_${randomString}.${extension}`;
 };
+
