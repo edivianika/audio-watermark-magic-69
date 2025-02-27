@@ -170,48 +170,75 @@ export const reduceToMono = (buffer: AudioBuffer): AudioBuffer => {
   return monoBuffer;
 };
 
-// New function to create a lighter watermark
-export const createLightWatermark = (message: string = "Trial Version", duration: number = 1): AudioBuffer => {
+// Create a synthetic "Trial Version" audio watermark
+export const createLightWatermark = (message: string = "Trial Version", duration: number = 1.5): AudioBuffer => {
   const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
   const sampleRate = audioContext.sampleRate;
   const bufferLength = Math.ceil(sampleRate * duration);
   const buffer = audioContext.createBuffer(1, bufferLength, sampleRate);
   const channelData = buffer.getChannelData(0);
   
-  // Basic speech synthesis parameters
-  const baseFrequency = 240; // Hz (higher than regular beep for clearer voice)
+  // Speech synthesis parameters - more audible for better perception
+  const baseFrequency = 300; // Hz (higher frequency for better audibility)
   const letterDuration = duration / (message.length + 2); // time per letter plus padding
   
-  // Create a very simple beep pattern that's recognizable but small
+  // Create a more recognizable beep pattern
   for (let i = 0; i < bufferLength; i++) {
     const timeInSec = i / sampleRate;
     const letterIndex = Math.floor(timeInSec / letterDuration);
     
     if (letterIndex < message.length) {
-      // Get character code for very basic "speech" impression
+      // Get character code to create varying tones
       const char = message[letterIndex];
       const charCode = char.charCodeAt(0);
-      const freqVariation = (charCode % 20) - 10; // -10 to +10 Hz frequency shift
+      const freqVariation = (charCode % 30) - 15; // -15 to +15 Hz variation
       
-      // Calculate frequency for this "letter"
+      // Calculate frequency for this "letter" - higher pitch for better audibility
       const frequency = baseFrequency + freqVariation;
       
-      // Generate sound wave with slight amplitude envelope (fade in/out per letter)
+      // Generate sound wave with better amplitude envelope
       const letterProgress = (timeInSec % letterDuration) / letterDuration;
-      let amplitude = 0.5;
+      let amplitude = 0.7; // Higher default amplitude for better audibility
       
-      // Simple envelope for smoother sound (fade in/out)
+      // Improved envelope for smoother sound
       if (letterProgress < 0.1) {
         amplitude *= letterProgress / 0.1; // fade in
-      } else if (letterProgress > 0.9) {
-        amplitude *= (1 - letterProgress) / 0.1; // fade out
+      } else if (letterProgress > 0.8) {
+        amplitude *= (1 - letterProgress) / 0.2; // fade out
       }
       
-      // Generate wave
-      channelData[i] = Math.sin(2 * Math.PI * frequency * timeInSec) * amplitude;
+      // Generate wave with slight distortion for better audibility in compressed form
+      const wave = Math.sin(2 * Math.PI * frequency * timeInSec);
+      const distortedWave = Math.sign(wave) * Math.pow(Math.abs(wave), 0.8); // Slight distortion
+      
+      channelData[i] = distortedWave * amplitude;
     } else {
-      // Silence between repetitions
+      // Brief silence between repeats
       channelData[i] = 0;
+    }
+  }
+  
+  // Apply a slight echo effect to make it more distinct
+  const delayMs = 60; // 60ms echo delay
+  const delaySamples = Math.floor(delayMs * sampleRate / 1000);
+  const feedback = 0.3; // Echo feedback level
+  
+  // Apply the echo
+  const originalData = new Float32Array(channelData);
+  for (let i = delaySamples; i < bufferLength; i++) {
+    channelData[i] += originalData[i - delaySamples] * feedback;
+  }
+  
+  // Normalize to prevent clipping
+  let maxAmp = 0;
+  for (let i = 0; i < bufferLength; i++) {
+    maxAmp = Math.max(maxAmp, Math.abs(channelData[i]));
+  }
+  
+  if (maxAmp > 0.95) {
+    const normFactor = 0.95 / maxAmp;
+    for (let i = 0; i < bufferLength; i++) {
+      channelData[i] *= normFactor;
     }
   }
   
