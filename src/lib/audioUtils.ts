@@ -11,7 +11,7 @@ export * from "./audioFileConversion";
 export * from "./audioWatermark";
 export * from "./audioProcessing";
 
-// Add watermark to audio with improved volume for better clarity
+// Add watermark to audio with improved clarity
 export const addWatermark = async (
   inputFile: File,
   watermarkVolume: number,
@@ -47,23 +47,13 @@ export const addWatermark = async (
     
     // Progressive compression for larger files
     if (fileSizeMB > 20) {
-      // Very large files: aggressive compression
-      bitDepth = 8;
-      sampleRateReduction = 4;
-      convertToMono = true;
-    } else if (fileSizeMB > 10) {
-      // Large files: strong compression
-      bitDepth = 8;
-      sampleRateReduction = 3;
-      convertToMono = true;
-    } else if (fileSizeMB > 5) {
-      // Medium files: moderate compression
-      bitDepth = 12;
+      // Very large files: moderate compression
+      bitDepth = 16;
       sampleRateReduction = 2;
-      convertToMono = true;
-    } else if (fileSizeMB > 2) {
-      // Smaller files: light compression
-      bitDepth = 12;
+      convertToMono = false;
+    } else if (fileSizeMB > 10) {
+      // Large files: light compression
+      bitDepth = 16;
       sampleRateReduction = 1.5;
       convertToMono = false;
     }
@@ -87,7 +77,7 @@ export const addWatermark = async (
       outputSampleRate
     );
     
-    // Process the audio with improved sample rate reduction
+    // First, copy the original audio to the output buffer with downsampling if needed
     for (let channel = 0; channel < numChannels; channel++) {
       const inputData = effectiveInputBuffer.getChannelData(channel);
       const outputData = outputBuffer.getChannelData(channel);
@@ -110,78 +100,62 @@ export const addWatermark = async (
     
     console.log(`Adding ${numWatermarks} watermarks at ${watermarkFrequency}s intervals`);
     
-    // Use a fixed and consistent volume level for the watermark
-    const effectiveWatermarkVolume = watermarkVolume;
+    // Ensure watermark is prepared properly before mixing
+    const preparedWatermarkBuffer = prepareWatermarkBuffer(watermarkBuffer, watermarkVolume, audioContext);
     
-    // First, normalize the watermark audio to ensure consistent volume
-    const normalizedWatermarkBuffer = audioContext.createBuffer(
-      watermarkBuffer.numberOfChannels,
-      watermarkBuffer.length,
-      watermarkBuffer.sampleRate
-    );
-    
-    // Find maximum amplitude in watermark for normalization
-    let maxWatermarkAmplitude = 0;
-    for (let channel = 0; channel < watermarkBuffer.numberOfChannels; channel++) {
-      const watermarkData = watermarkBuffer.getChannelData(channel);
-      for (let i = 0; i < watermarkData.length; i++) {
-        maxWatermarkAmplitude = Math.max(maxWatermarkAmplitude, Math.abs(watermarkData[i]));
-      }
-    }
-    
-    // Normalize watermark to ensure consistent volume, but preserve the original without fade effects
-    const normalizationFactor = maxWatermarkAmplitude > 0 ? 0.8 / maxWatermarkAmplitude : 1;
-    for (let channel = 0; channel < watermarkBuffer.numberOfChannels; channel++) {
-      const watermarkData = watermarkBuffer.getChannelData(channel);
-      const normalizedData = normalizedWatermarkBuffer.getChannelData(channel);
-      for (let i = 0; i < watermarkData.length; i++) {
-        normalizedData[i] = watermarkData[i] * normalizationFactor;
-      }
-    }
-    
-    // Add the watermark at regular intervals, preserving both original audio and watermark
+    // Add watermarks at intervals, preserving both the original audio and watermark clarity
     for (let i = 0; i < numWatermarks; i++) {
       const startTimeSeconds = i * watermarkFrequency;
       const startFrame = Math.floor(startTimeSeconds * outputBuffer.sampleRate);
       
-      if (startFrame + normalizedWatermarkBuffer.length > outputBuffer.length) {
+      if (startFrame + preparedWatermarkBuffer.length > outputBuffer.length) {
         continue; // Skip if watermark doesn't fit
       }
       
-      console.log(`Adding watermark at ${startTimeSeconds}s with volume ${effectiveWatermarkVolume}`);
+      console.log(`Adding watermark at ${startTimeSeconds}s with volume ${watermarkVolume}`);
       
-      // Calculate number of samples to blend
+      // Calculate number of samples to mix
       const watermarkLengthSamples = Math.min(
-        normalizedWatermarkBuffer.length,
+        preparedWatermarkBuffer.length,
         outputBuffer.length - startFrame
       );
       
-      // Add watermark using additive blending for all channels
+      // Mix watermark using ducking technique for all channels
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
         const outputData = outputBuffer.getChannelData(channel);
         
         // Use watermark channel or first channel if watermark has fewer channels
-        const watermarkChannelIndex = Math.min(channel, normalizedWatermarkBuffer.numberOfChannels - 1);
-        const watermarkData = normalizedWatermarkBuffer.getChannelData(watermarkChannelIndex);
+        const watermarkChannelIndex = Math.min(channel, preparedWatermarkBuffer.numberOfChannels - 1);
+        const watermarkData = preparedWatermarkBuffer.getChannelData(watermarkChannelIndex);
         
-        // Add watermark without reducing original audio volume
+        // Mix using ducking technique for clarity
         for (let j = 0; j < watermarkLengthSamples; j++) {
           if (startFrame + j >= outputData.length) break;
           
           // Get original audio sample
           const originalSample = outputData[startFrame + j];
           
-          // Get watermark sample with applied volume
-          const watermarkSample = watermarkData[j] * effectiveWatermarkVolume;
+          // Get watermark sample
+          const watermarkSample = watermarkData[j];
           
-          // Additive blending: add watermark ON TOP of original without reducing original volume
-          // Clamp to [-1, 1] range to prevent distortion
-          outputData[startFrame + j] = Math.max(-1, Math.min(1, originalSample + watermarkSample));
+          // Calculate ducking factor - when watermark is loud, reduce original audio
+          const watermarkAbs = Math.abs(watermarkSample);
+          
+          // Only apply significant ducking when watermark is actually present (not silence)
+          if (watermarkAbs > 0.05) {
+            // Reduce original by 65-85% depending on watermark volume
+            const duckingFactor = 0.35 - (watermarkAbs * 0.2);
+            // Mix: scaled original + watermark
+            outputData[startFrame + j] = (originalSample * duckingFactor) + watermarkSample;
+          } else {
+            // For silence or very quiet parts of watermark, don't duck the original much
+            outputData[startFrame + j] = (originalSample * 0.85) + watermarkSample;
+          }
         }
       }
     }
     
-    // Apply overall volume normalization to prevent any clipping
+    // Apply overall limiter to prevent clipping
     for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
       const data = outputBuffer.getChannelData(channel);
       
@@ -215,6 +189,64 @@ export const addWatermark = async (
     console.error("Error adding watermark:", error);
     throw error;
   }
+};
+
+// Prepare watermark buffer for maximum clarity
+const prepareWatermarkBuffer = (
+  watermarkBuffer: AudioBuffer,
+  watermarkVolume: number,
+  audioContext: AudioContext
+): AudioBuffer => {
+  // Create a new buffer for the prepared watermark
+  const preparedBuffer = audioContext.createBuffer(
+    watermarkBuffer.numberOfChannels,
+    watermarkBuffer.length,
+    watermarkBuffer.sampleRate
+  );
+  
+  // Find maximum amplitude for normalization
+  let maxAmplitude = 0;
+  for (let channel = 0; channel < watermarkBuffer.numberOfChannels; channel++) {
+    const watermarkData = watermarkBuffer.getChannelData(channel);
+    for (let i = 0; i < watermarkData.length; i++) {
+      maxAmplitude = Math.max(maxAmplitude, Math.abs(watermarkData[i]));
+    }
+  }
+  
+  // Apply normalization and prepare the watermark buffer
+  const normalizationFactor = maxAmplitude > 0 ? 0.9 / maxAmplitude : 1;
+  
+  for (let channel = 0; channel < watermarkBuffer.numberOfChannels; channel++) {
+    const watermarkData = watermarkBuffer.getChannelData(channel);
+    const preparedData = preparedBuffer.getChannelData(channel);
+    
+    for (let i = 0; i < watermarkData.length; i++) {
+      // Apply normalization and user-defined volume
+      let sample = watermarkData[i] * normalizationFactor * watermarkVolume;
+      
+      // Enhance speech frequencies for better clarity (mild EQ boost)
+      // This simulates a high-pass filter to remove muddy low frequencies
+      // and a presence boost for better clarity
+      if (i > 0 && i < watermarkData.length - 1) {
+        // Apply a very mild high-pass effect by reducing low-frequency energy
+        const prevSample = watermarkData[i-1] * normalizationFactor * watermarkVolume;
+        sample = sample * 0.95 + (sample - prevSample) * 0.3;
+      }
+      
+      // Apply gentle compression to increase perceived loudness
+      if (Math.abs(sample) > 0.4) {
+        // Soft knee compression
+        const excess = Math.abs(sample) - 0.4;
+        const compression = excess * 0.3; // Only compress 30% of the excess
+        sample = sample > 0 ? sample - compression : sample + compression;
+      }
+      
+      // Store the enhanced sample
+      preparedData[i] = sample;
+    }
+  }
+  
+  return preparedBuffer;
 };
 
 // Generate a unique filename
