@@ -104,41 +104,116 @@ export const addWatermark = async (
       }
     }
     
-    // Now add watermarks at intervals with 100% watermark volume for maximum audibility
+    // Now add watermarks at intervals with improved clarity
     const watermarkFrequency = Math.max(watermarkInterval, inputDuration / 15); // Maximum of 15 watermarks
     const numWatermarks = Math.floor(inputDuration / watermarkFrequency);
     
     console.log(`Adding ${numWatermarks} watermarks at ${watermarkFrequency}s intervals`);
     
-    // Set watermark volume to 100% (1.0) for maximum audibility
-    // Ignore the user volume setting and always use maximum volume
-    const effectiveWatermarkVolume = 1.0; // Fixed at 100% for maximum audibility
+    // Use a fixed and consistent volume level for the watermark
+    const effectiveWatermarkVolume = 0.5; // 50% volume, consistent for all watermarks
     
+    // First, analyze and normalize the watermark audio to ensure consistent volume
+    const normalizedWatermarkBuffer = audioContext.createBuffer(
+      watermarkBuffer.numberOfChannels,
+      watermarkBuffer.length,
+      watermarkBuffer.sampleRate
+    );
+    
+    // Find maximum amplitude in watermark for normalization
+    let maxWatermarkAmplitude = 0;
+    for (let channel = 0; channel < watermarkBuffer.numberOfChannels; channel++) {
+      const watermarkData = watermarkBuffer.getChannelData(channel);
+      for (let i = 0; i < watermarkData.length; i++) {
+        maxWatermarkAmplitude = Math.max(maxWatermarkAmplitude, Math.abs(watermarkData[i]));
+      }
+    }
+    
+    // Normalize watermark to ensure consistent volume
+    const normalizationFactor = maxWatermarkAmplitude > 0 ? 0.8 / maxWatermarkAmplitude : 1;
+    for (let channel = 0; channel < watermarkBuffer.numberOfChannels; channel++) {
+      const watermarkData = watermarkBuffer.getChannelData(channel);
+      const normalizedData = normalizedWatermarkBuffer.getChannelData(channel);
+      for (let i = 0; i < watermarkData.length; i++) {
+        normalizedData[i] = watermarkData[i] * normalizationFactor;
+      }
+    }
+    
+    // Apply fade-in and fade-out to the normalized watermark for smooth transitions
+    const fadeLength = Math.floor(normalizedWatermarkBuffer.sampleRate * 0.05); // 50ms fade
+    for (let channel = 0; channel < normalizedWatermarkBuffer.numberOfChannels; channel++) {
+      const data = normalizedWatermarkBuffer.getChannelData(channel);
+      
+      // Apply fade-in
+      for (let i = 0; i < fadeLength; i++) {
+        const factor = i / fadeLength;
+        data[i] *= factor;
+      }
+      
+      // Apply fade-out
+      for (let i = 0; i < fadeLength; i++) {
+        const idx = data.length - 1 - i;
+        const factor = i / fadeLength;
+        data[idx] *= factor;
+      }
+    }
+    
+    // Add the watermark at regular intervals, mixing it properly with the original audio
     for (let i = 0; i < numWatermarks; i++) {
       const startTimeSeconds = i * watermarkFrequency;
       const startFrame = Math.floor(startTimeSeconds * outputBuffer.sampleRate);
       
-      if (startFrame + watermarkBuffer.length > outputBuffer.length) {
-        continue;
+      if (startFrame + normalizedWatermarkBuffer.length > outputBuffer.length) {
+        continue; // Skip if watermark doesn't fit
       }
       
       console.log(`Adding watermark at ${startTimeSeconds}s with volume ${effectiveWatermarkVolume}`);
       
-      // Add watermark with direct mixing for maximum audibility
+      // Calculate number of samples to blend
+      const watermarkLengthSamples = Math.min(
+        normalizedWatermarkBuffer.length,
+        outputBuffer.length - startFrame
+      );
+      
+      // Add watermark using proper blending for all channels
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
         const outputData = outputBuffer.getChannelData(channel);
-        // Use as many channels as available from the watermark, or repeat the first one
-        const watermarkData = channel < watermarkBuffer.numberOfChannels 
-          ? watermarkBuffer.getChannelData(channel) 
-          : watermarkBuffer.getChannelData(0);
         
-        // Use direct replacement for clearest watermark (100% watermark, 0% original)
-        for (let j = 0; j < watermarkBuffer.length; j++) {
+        // Use watermark channel or first channel if watermark has fewer channels
+        const watermarkChannelIndex = Math.min(channel, normalizedWatermarkBuffer.numberOfChannels - 1);
+        const watermarkData = normalizedWatermarkBuffer.getChannelData(watermarkChannelIndex);
+        
+        // Improved blending method - fade in and out for smoother transition
+        for (let j = 0; j < watermarkLengthSamples; j++) {
           if (startFrame + j >= outputData.length) break;
           
-          // Apply watermark at 100% volume, completely replacing the original audio
-          // for the duration of the watermark
-          outputData[startFrame + j] = watermarkData[j] * effectiveWatermarkVolume;
+          // Simple crossfade blending - preserves original audio while adding watermark
+          // 70% original + 30% watermark ensures the original audio quality is preserved
+          // but watermark is still clearly audible
+          const originalSample = outputData[startFrame + j];
+          const watermarkSample = watermarkData[j] * effectiveWatermarkVolume;
+          
+          // Linear mix: 70% original + 30% watermark
+          outputData[startFrame + j] = originalSample * 0.7 + watermarkSample * 0.3;
+        }
+      }
+    }
+    
+    // Apply overall volume normalization to prevent any clipping
+    for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
+      const data = outputBuffer.getChannelData(channel);
+      
+      // Find maximum amplitude
+      let maxAmplitude = 0;
+      for (let i = 0; i < data.length; i++) {
+        maxAmplitude = Math.max(maxAmplitude, Math.abs(data[i]));
+      }
+      
+      // Apply gentle limiting only if needed
+      if (maxAmplitude > 0.95) {
+        const limitFactor = 0.95 / maxAmplitude;
+        for (let i = 0; i < data.length; i++) {
+          data[i] *= limitFactor;
         }
       }
     }
