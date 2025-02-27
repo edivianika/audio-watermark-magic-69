@@ -40,9 +40,12 @@ export const fetchWatermarkAudio = async (): Promise<File> => {
   try {
     console.log('Fetching watermark from Supabase storage');
     
+    // Get the latest watermark file metadata from the database
     const { data: watermarkData, error: dbError } = await supabase
       .from('watermark_audio')
       .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single();
 
     if (dbError) {
@@ -57,16 +60,30 @@ export const fetchWatermarkAudio = async (): Promise<File> => {
 
     console.log('Watermark data found:', watermarkData);
 
-    const { data: fileData, error: storageError } = await supabase.storage
+    // Get signed URL for the file (works even if bucket is public)
+    const { data: publicUrl } = supabase.storage
       .from('audio')
-      .download(watermarkData.storage_path);
-
-    if (storageError || !fileData) {
-      console.warn(`Storage error: ${JSON.stringify(storageError)}, will use fallback watermark`);
+      .getPublicUrl(watermarkData.storage_path);
+    
+    if (!publicUrl || !publicUrl.publicUrl) {
+      console.warn('Failed to get public URL for watermark, will use fallback');
       return await fetchDefaultWatermark();
     }
 
-    return new File([fileData], 'watermark.mp3', { type: 'audio/mpeg' });
+    // Fetch the file using the public URL
+    const response = await fetch(publicUrl.publicUrl);
+    
+    if (!response.ok) {
+      console.warn(`HTTP error fetching watermark: ${response.status}, will use fallback`);
+      return await fetchDefaultWatermark();
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    return new File(
+      [arrayBuffer], 
+      watermarkData.filename, 
+      { type: watermarkData.content_type || 'audio/mpeg' }
+    );
   } catch (error) {
     console.error('Error fetching watermark from Supabase:', error);
     console.log('Using fallback watermark instead');
