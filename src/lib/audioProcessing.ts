@@ -26,78 +26,99 @@ export const loadAudioFile = async (audioContext: AudioContext, file: File): Pro
 export const audioBufferToMp3 = (buffer: AudioBuffer, options: { 
   kbps?: number
 } = {}): Uint8Array => {
+  console.log("Starting MP3 conversion process");
+  
   const channels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const kbps = options.kbps || 128;
   
-  // Create MP3 encoder - using proper method to create encoder
-  // In lamejs, Mp3Encoder takes (numChannels, sampleRate, bitRate)
+  console.log(`Audio specs: ${channels} channels, ${sampleRate}Hz, targeting ${kbps}kbps`);
+  
+  // Create MP3 encoder
   const mp3encoder = new lamejs.Mp3Encoder(
-    channels === 2 ? 2 : 1, // Stereo (2) or Mono (1)
+    Math.min(2, channels), // lamejs only supports mono (1) or stereo (2)
     sampleRate,
     kbps
   );
   
   const mp3Data: Int8Array[] = [];
   
-  // Convert to samples
-  const leftChannel = buffer.getChannelData(0);
-  const rightChannel = channels > 1 ? buffer.getChannelData(1) : null;
-  const samples = new Int16Array(buffer.length * (rightChannel ? 2 : 1));
+  // Process audio in chunks to avoid memory issues
+  const blockSize = 1152; // MP3 frame size
+  const blocks = Math.ceil(buffer.length / blockSize);
   
-  // Convert float32 to int16
-  for (let i = 0; i < buffer.length; i++) {
-    // Left channel
-    const leftSample = Math.max(-1, Math.min(1, leftChannel[i]));
-    samples[i * (rightChannel ? 2 : 1)] = leftSample < 0 ? leftSample * 0x8000 : leftSample * 0x7FFF;
+  console.log(`Processing ${blocks} blocks of audio data`);
+  
+  if (channels === 1) {
+    // Mono processing
+    const samples = new Int16Array(blockSize);
+    const leftChannel = buffer.getChannelData(0);
     
-    // Right channel (if stereo)
-    if (rightChannel) {
-      const rightSample = Math.max(-1, Math.min(1, rightChannel[i]));
-      samples[i * 2 + 1] = rightSample < 0 ? rightSample * 0x8000 : rightSample * 0x7FFF;
-    }
-  }
-  
-  // Encode to MP3 in chunks
-  const blockSize = 1152; // This is a standard MP3 block size
-  let leftChunk, rightChunk, mp3buf;
-  
-  for (let i = 0; i < buffer.length; i += blockSize) {
-    if (channels === 1) {
-      // Mono
-      leftChunk = samples.subarray(i, i + blockSize);
-      mp3buf = mp3encoder.encodeBuffer(leftChunk);
-    } else {
-      // Stereo - separate channels for lamejs
-      leftChunk = new Int16Array(blockSize);
-      rightChunk = new Int16Array(blockSize);
+    for (let i = 0; i < blocks; i++) {
+      const offset = i * blockSize;
+      const sampleCount = Math.min(blockSize, buffer.length - offset);
       
-      // Extract left and right channel data
-      for (let j = 0; j < blockSize && (i + j) < buffer.length; j++) {
-        leftChunk[j] = samples[(i + j) * 2];
-        rightChunk[j] = samples[(i + j) * 2 + 1];
+      // Clear the samples array
+      samples.fill(0);
+      
+      // Convert float32 to int16
+      for (let j = 0; j < sampleCount; j++) {
+        const sample = Math.max(-1, Math.min(1, leftChannel[offset + j]));
+        samples[j] = sample < 0 ? Math.floor(sample * 0x8000) : Math.floor(sample * 0x7FFF);
       }
       
-      mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+      // Encode this block
+      const mp3buf = mp3encoder.encodeBuffer(samples);
+      if (mp3buf && mp3buf.length > 0) {
+        mp3Data.push(mp3buf);
+      }
     }
+  } else {
+    // Stereo processing
+    const leftSamples = new Int16Array(blockSize);
+    const rightSamples = new Int16Array(blockSize);
+    const leftChannel = buffer.getChannelData(0);
+    const rightChannel = buffer.getChannelData(1);
     
-    if (mp3buf.length > 0) {
-      mp3Data.push(mp3buf);
+    for (let i = 0; i < blocks; i++) {
+      const offset = i * blockSize;
+      const sampleCount = Math.min(blockSize, buffer.length - offset);
+      
+      // Clear the samples arrays
+      leftSamples.fill(0);
+      rightSamples.fill(0);
+      
+      // Convert float32 to int16 for both channels
+      for (let j = 0; j < sampleCount; j++) {
+        const left = Math.max(-1, Math.min(1, leftChannel[offset + j]));
+        const right = Math.max(-1, Math.min(1, rightChannel[offset + j]));
+        
+        leftSamples[j] = left < 0 ? Math.floor(left * 0x8000) : Math.floor(left * 0x7FFF);
+        rightSamples[j] = right < 0 ? Math.floor(right * 0x8000) : Math.floor(right * 0x7FFF);
+      }
+      
+      // Encode this block
+      const mp3buf = mp3encoder.encodeBuffer(leftSamples, rightSamples);
+      if (mp3buf && mp3buf.length > 0) {
+        mp3Data.push(mp3buf);
+      }
     }
   }
   
   // Get the last chunk of MP3 data
   const final = mp3encoder.flush();
-  if (final.length > 0) {
+  if (final && final.length > 0) {
     mp3Data.push(final);
   }
   
-  // Calculate total length and create final buffer
+  // Calculate total length
   const totalLength = mp3Data.reduce((acc, chunk) => acc + chunk.length, 0);
+  console.log(`MP3 conversion complete. Generated ${totalLength} bytes`);
+  
+  // Combine all chunks into a single Uint8Array
   const result = new Uint8Array(totalLength);
   let offset = 0;
   
-  // Combine all chunks
   for (const chunk of mp3Data) {
     result.set(chunk, offset);
     offset += chunk.length;
