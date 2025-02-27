@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { AudioWaveform, AudioLines, Upload, ChevronDown, ChevronUp, Settings, FileText } from "lucide-react";
-import { addWatermark, generateUniqueFilename } from "@/lib/audioUtils";
+import { AudioWaveform, AudioLines, Upload, ChevronDown, ChevronUp, Settings, FileText, Check, Download } from "lucide-react";
+import { addWatermark, generateUniqueFilename, processBatch } from "@/lib/audioUtils";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 
 const AudioWatermarker: React.FC = () => {
   const { toast } = useToast();
@@ -25,6 +26,8 @@ const AudioWatermarker: React.FC = () => {
   const dropzoneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileSize, setFileSize] = useState<string | null>(null);
+  const [useBatchMode, setUseBatchMode] = useState(true); // Enable batch mode by default
+  const [processedFiles, setProcessedFiles] = useState<{name: string, url: string}[]>([]);
 
   // Process files with watermark
   const processFiles = async () => {
@@ -39,52 +42,76 @@ const AudioWatermarker: React.FC = () => {
 
     setIsProcessing(true);
     setProgress(0);
+    setProcessedFiles([]);
 
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const currentProgress = Math.round(((i) / files.length) * 100);
-        setProgress(currentProgress);
-
-        console.log(`Processing file ${i + 1} of ${files.length}: ${file.name}`);
-        const originalSize = (file.size / 1024 / 1024).toFixed(2);
-        
-        // Process file with our watermarking method
-        const outputBlob = await addWatermark(
-          file,
+      if (useBatchMode) {
+        // Process all files in batch
+        const results = await processBatch(
+          files,
           watermarkVolume,
-          watermarkInterval
+          watermarkInterval,
+          (current, total) => {
+            const currentProgress = Math.round(((current) / total) * 100);
+            setProgress(currentProgress);
+          }
         );
-
-        const compressedSize = (outputBlob.size / 1024 / 1024).toFixed(2);
-        const compressionRatio = (file.size / outputBlob.size).toFixed(2);
-        console.log(`Compression: ${originalSize}MB → ${compressedSize}MB (${compressionRatio}x)`);
         
-        // Update file size info for display
-        setFileSize(`Original: ${originalSize}MB, Compressed: ${compressedSize}MB, Ratio: ${compressionRatio}x`);
+        // Store processed files for download
+        setProcessedFiles(results);
+        
+        toast({
+          title: "Batch Processing Complete",
+          description: `Successfully processed ${results.length} file(s) with watermark`,
+        });
+      } else {
+        // Process files one by one with immediate download (old behavior)
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const currentProgress = Math.round(((i) / files.length) * 100);
+          setProgress(currentProgress);
 
-        // Generate the trial filename
-        const originalName = file.name;
-        const extension = originalName.split('.').pop();
-        const nameWithoutExt = originalName.slice(0, -(extension?.length || 0) - 1);
-        const trialFilename = `${nameWithoutExt}_Trial.${extension}`;
+          console.log(`Processing file ${i + 1} of ${files.length}: ${file.name}`);
+          const originalSize = (file.size / 1024 / 1024).toFixed(2);
+          
+          // Process file with our watermarking method
+          const outputBlob = await addWatermark(
+            file,
+            watermarkVolume,
+            watermarkInterval
+          );
 
-        // Create download link
-        const url = URL.createObjectURL(outputBlob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = trialFilename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+          const compressedSize = (outputBlob.size / 1024 / 1024).toFixed(2);
+          const compressionRatio = (file.size / outputBlob.size).toFixed(2);
+          console.log(`Compression: ${originalSize}MB → ${compressedSize}MB (${compressionRatio}x)`);
+          
+          // Update file size info for display
+          setFileSize(`Original: ${originalSize}MB, Compressed: ${compressedSize}MB, Ratio: ${compressionRatio}x`);
+
+          // Generate the trial filename
+          const originalName = file.name;
+          const extension = originalName.split('.').pop();
+          const nameWithoutExt = originalName.slice(0, -(extension?.length || 0) - 1);
+          const trialFilename = `${nameWithoutExt}_Trial.${extension}`;
+
+          // Create download link
+          const url = URL.createObjectURL(outputBlob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = trialFilename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
+        
+        toast({
+          title: "Processing Complete",
+          description: `Successfully processed ${files.length} file(s) with watermark`,
+        });
       }
 
       setProgress(100);
-      toast({
-        title: "Processing Complete",
-        description: `Successfully processed ${files.length} file(s) with watermark`,
-      });
     } catch (error) {
       console.error("Error processing files:", error);
       toast({
@@ -95,6 +122,28 @@ const AudioWatermarker: React.FC = () => {
     } finally {
       setIsProcessing(false);
     }
+  };
+  
+  // Download a processed file
+  const downloadFile = (url: string, filename: string) => {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+  
+  // Download all processed files
+  const downloadAllFiles = () => {
+    processedFiles.forEach(file => {
+      downloadFile(file.url, file.name);
+    });
+    
+    toast({
+      title: "Download Started",
+      description: `Downloading ${processedFiles.length} file(s)`,
+    });
   };
 
   // Handle file selection
@@ -115,6 +164,8 @@ const AudioWatermarker: React.FC = () => {
       
       setFiles(audioFiles);
       setFileSize(null); // Reset file size info
+      // Clear processed files when new files are selected
+      setProcessedFiles([]);
     }
   };
 
@@ -166,12 +217,26 @@ const AudioWatermarker: React.FC = () => {
       
       setFiles(audioFiles);
       setFileSize(null); // Reset file size info
+      // Clear processed files when new files are selected
+      setProcessedFiles([]);
     }
   }, [toast]);
 
   // Toggle settings visibility
   const toggleSettings = () => {
     setShowSettings(!showSettings);
+  };
+  
+  // Clear all files
+  const clearFiles = () => {
+    setFiles([]);
+    setProcessedFiles([]);
+    setFileSize(null);
+    
+    // Clean up any object URLs to prevent memory leaks
+    processedFiles.forEach(file => {
+      URL.revokeObjectURL(file.url);
+    });
   };
 
   return (
@@ -180,7 +245,7 @@ const AudioWatermarker: React.FC = () => {
         <div className="text-center">
           <h1 className="text-4xl font-bold tracking-tight mt-6 mb-2">Audio Watermark Magic</h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Add watermarks to your audio files with precise control over volume and placement
+            Add watermarks to your audio files with precise control over placement
           </p>
         </div>
 
@@ -229,7 +294,7 @@ const AudioWatermarker: React.FC = () => {
             </div>
 
             {/* Browse Files Button */}
-            <div className="mt-4 flex justify-center">
+            <div className="mt-4 flex justify-center gap-2">
               <Button 
                 onClick={handleBrowseClick}
                 disabled={isProcessing}
@@ -239,6 +304,17 @@ const AudioWatermarker: React.FC = () => {
                 <Upload className="h-4 w-4" />
                 Browse Files
               </Button>
+              
+              {files.length > 0 && (
+                <Button
+                  onClick={clearFiles}
+                  disabled={isProcessing}
+                  variant="outline"
+                  className="gap-2"
+                >
+                  Clear Files
+                </Button>
+              )}
             </div>
 
             {/* Selected Files */}
@@ -257,6 +333,43 @@ const AudioWatermarker: React.FC = () => {
                       <span className="text-sm text-muted-foreground">
                         {(file.size / 1024 / 1024).toFixed(2)} MB
                       </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Processed Files */}
+            {processedFiles.length > 0 && (
+              <div className="mt-6">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="font-medium">Processed Files ({processedFiles.length})</h3>
+                  <Button
+                    onClick={downloadAllFiles}
+                    variant="outline"
+                    size="sm"
+                    className="gap-1"
+                  >
+                    <Download className="h-3 w-3" />
+                    Download All
+                  </Button>
+                </div>
+                <div className="max-h-40 overflow-y-auto border rounded-md p-2">
+                  {processedFiles.map((file, index) => (
+                    <div
+                      key={index}
+                      className="flex justify-between items-center py-2 px-3 odd:bg-muted/30 rounded-sm"
+                    >
+                      <span className="truncate max-w-[200px] sm:max-w-xs">
+                        {file.name}
+                      </span>
+                      <Button
+                        onClick={() => downloadFile(file.url, file.name)}
+                        variant="ghost"
+                        size="sm"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -301,24 +414,6 @@ const AudioWatermarker: React.FC = () => {
               <CardContent className="space-y-6 pt-0">
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <Label htmlFor="watermark-volume">Watermark Volume: {(watermarkVolume * 100).toFixed(0)}%</Label>
-                  </div>
-                  <Slider
-                    id="watermark-volume"
-                    min={0.1}
-                    max={1}
-                    step={0.05}
-                    value={[watermarkVolume]}
-                    onValueChange={(value) => setWatermarkVolume(value[0])}
-                    disabled={isProcessing}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Adjust how loud the watermark will be in the final audio
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
                     <Label htmlFor="watermark-interval">Interval: {watermarkInterval} seconds</Label>
                   </div>
                   <Slider
@@ -334,7 +429,22 @@ const AudioWatermarker: React.FC = () => {
                     Set how often the watermark appears in the audio
                   </p>
                 </div>
-
+                
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="batch-mode"
+                    checked={useBatchMode}
+                    onCheckedChange={setUseBatchMode}
+                    disabled={isProcessing}
+                  />
+                  <Label htmlFor="batch-mode" className="font-medium">Batch Processing Mode</Label>
+                </div>
+                <p className="text-xs text-muted-foreground -mt-4">
+                  {useBatchMode 
+                    ? "Process all files at once and provide download links"
+                    : "Process files one by one with immediate download"
+                  }
+                </p>
               </CardContent>
             </CollapsibleContent>
           </Collapsible>
@@ -356,7 +466,9 @@ const AudioWatermarker: React.FC = () => {
             >
               {isProcessing
                 ? "Processing..."
-                : "Add Watermark & Download"}
+                : useBatchMode
+                  ? "Process All Files"
+                  : "Add Watermark & Download"}
             </Button>
           </CardFooter>
         </Card>

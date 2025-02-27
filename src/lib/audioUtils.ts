@@ -104,15 +104,15 @@ export const addWatermark = async (
       }
     }
     
-    // Now add watermarks at intervals with increased volume for better audibility
+    // Now add watermarks at intervals with 100% watermark volume for maximum audibility
     const watermarkFrequency = Math.max(watermarkInterval, inputDuration / 15); // Maximum of 15 watermarks
     const numWatermarks = Math.floor(inputDuration / watermarkFrequency);
     
     console.log(`Adding ${numWatermarks} watermarks at ${watermarkFrequency}s intervals`);
     
-    // Boost the watermark volume significantly to ensure it's clearly audible
-    // We multiply the user-set volume by a factor to make it more pronounced
-    const effectiveWatermarkVolume = Math.min(watermarkVolume * 2.5, 1.0); // Boost volume substantially but cap at 1.0
+    // Set watermark volume to 100% (1.0) for maximum audibility
+    // Ignore the user volume setting and always use maximum volume
+    const effectiveWatermarkVolume = 1.0; // Fixed at 100% for maximum audibility
     
     for (let i = 0; i < numWatermarks; i++) {
       const startTimeSeconds = i * watermarkFrequency;
@@ -124,7 +124,7 @@ export const addWatermark = async (
       
       console.log(`Adding watermark at ${startTimeSeconds}s with volume ${effectiveWatermarkVolume}`);
       
-      // Add watermark with direct mixing for better audibility
+      // Add watermark with direct mixing for maximum audibility
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
         const outputData = outputBuffer.getChannelData(channel);
         // Use as many channels as available from the watermark, or repeat the first one
@@ -132,14 +132,13 @@ export const addWatermark = async (
           ? watermarkBuffer.getChannelData(channel) 
           : watermarkBuffer.getChannelData(0);
         
-        // Use a more aggressive mixing approach for better audibility
+        // Use direct replacement for clearest watermark (100% watermark, 0% original)
         for (let j = 0; j < watermarkBuffer.length; j++) {
           if (startFrame + j >= outputData.length) break;
           
-          // Apply watermark with higher relative volume compared to original
-          // Mix 50% original + 50% watermark for clear audibility
-          const watermarkAmp = watermarkData[j] * effectiveWatermarkVolume;
-          outputData[startFrame + j] = outputData[startFrame + j] * 0.5 + watermarkAmp * 0.5;
+          // Apply watermark at 100% volume, completely replacing the original audio
+          // for the duration of the watermark
+          outputData[startFrame + j] = watermarkData[j] * effectiveWatermarkVolume;
         }
       }
     }
@@ -167,4 +166,56 @@ export const generateUniqueFilename = (originalName: string): string => {
   const randomString = Math.random().toString(36).substring(2, 8);
   const extension = originalName.split('.').pop();
   return `watermarked_${timestamp}_${randomString}.${extension}`;
+};
+
+// Process multiple files with a watermark
+export const processBatch = async (
+  files: File[],
+  watermarkVolume: number,
+  watermarkInterval: number,
+  progressCallback: (current: number, total: number) => void
+): Promise<{name: string, url: string}[]> => {
+  const results = [];
+  
+  for (let i = 0; i < files.length; i++) {
+    try {
+      // Process current file
+      const file = files[i];
+      console.log(`Batch processing file ${i + 1} of ${files.length}: ${file.name}`);
+      
+      // Update progress
+      progressCallback(i, files.length);
+      
+      // Process file with our watermarking method
+      const outputBlob = await addWatermark(
+        file,
+        watermarkVolume,
+        watermarkInterval
+      );
+      
+      // Generate the filename
+      const originalName = file.name;
+      const extension = originalName.split('.').pop();
+      const nameWithoutExt = originalName.slice(0, -(extension?.length || 0) - 1);
+      const outputFilename = `${nameWithoutExt}_Watermarked.${extension}`;
+      
+      // Create download URL
+      const url = URL.createObjectURL(outputBlob);
+      
+      // Add to results
+      results.push({
+        name: outputFilename,
+        url: url
+      });
+      
+    } catch (error) {
+      console.error(`Error processing file ${files[i].name}:`, error);
+      // Continue with next file on error
+    }
+  }
+  
+  // Final progress update
+  progressCallback(files.length, files.length);
+  
+  return results;
 };
