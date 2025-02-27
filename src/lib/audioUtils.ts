@@ -40,6 +40,9 @@ export const addWatermark = async (
     const fileSizeMB = inputFile.size / (1024 * 1024);
     console.log(`Original file size: ${fileSizeMB.toFixed(2)} MB`);
     
+    // Maximum final size in MB - enforce 16MB limit
+    const maxSizeInMB = 16;
+    
     // Adaptive compression settings based on file size
     let quality: 'low' | 'medium' | 'high' = 'high';
     let convertToMono = false;
@@ -54,7 +57,7 @@ export const addWatermark = async (
       quality = 'medium';
     }
     
-    console.log(`Compression settings: ${quality} quality, mono: ${convertToMono}`);
+    console.log(`Compression settings: ${quality} quality, mono: ${convertToMono}, max size: ${maxSizeInMB}MB`);
     
     // Convert to mono if needed for size reduction
     const effectiveInputBuffer = convertToMono ? reduceToMono(inputBuffer) : inputBuffer;
@@ -111,15 +114,24 @@ export const addWatermark = async (
       }
     }
     
-    // Convert to compressed format with quality settings
-    const compressedData = audioBufferToCompressedFormat(outputBuffer, { quality });
+    // Convert to compressed format with quality settings and size limitation
+    const compressedData = audioBufferToCompressedFormat(outputBuffer, { 
+      quality,
+      maxSizeInMB
+    });
     
-    // Determine output MIME type based on quality
+    // Determine output MIME type
     const mimeType = "audio/wav";
     
+    const finalSizeMB = compressedData.length / (1024 * 1024);
     const compressionRatio = inputFile.size / compressedData.length;
-    console.log(`Audio watermarking completed with compression. Output size: ${compressedData.length / 1024} KB`);
+    console.log(`Audio watermarking completed with compression. Output size: ${finalSizeMB.toFixed(2)} MB`);
     console.log(`Compression ratio: ${compressionRatio.toFixed(2)}x`);
+    
+    // Final check to ensure we're within limits
+    if (finalSizeMB > maxSizeInMB) {
+      console.warn(`Warning: Final size (${finalSizeMB.toFixed(2)}MB) exceeds target (${maxSizeInMB}MB) despite compression efforts`);
+    }
     
     return new Blob([compressedData], { 
       type: mimeType
@@ -146,6 +158,7 @@ export const processBatch = async (
   progressCallback: (current: number, total: number) => void
 ): Promise<{name: string, url: string}[]> => {
   const results = [];
+  const maxSizeInMB = 16; // Enforce 16MB limit
   
   for (let i = 0; i < files.length; i++) {
     try {
@@ -159,6 +172,14 @@ export const processBatch = async (
         watermarkVolume,
         watermarkInterval
       );
+      
+      // Get the final size after processing
+      const finalSizeMB = outputBlob.size / (1024 * 1024);
+      console.log(`Final output size: ${finalSizeMB.toFixed(2)}MB (target: ${maxSizeInMB}MB)`);
+      
+      if (finalSizeMB > maxSizeInMB) {
+        console.warn(`Warning: File ${file.name} compressed to ${finalSizeMB.toFixed(2)}MB, still above ${maxSizeInMB}MB limit`);
+      }
       
       const originalName = file.name;
       const extension = 'wav'; // Use WAV for our compressed output

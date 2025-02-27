@@ -21,50 +21,144 @@ export const loadAudioFile = async (audioContext: AudioContext, file: File): Pro
   });
 };
 
-// Convert AudioBuffer to WAV format with quality reduction
+// Convert AudioBuffer to WAV format with quality reduction and size control
 export const audioBufferToCompressedFormat = (buffer: AudioBuffer, options: { 
-  quality?: 'low' | 'medium' | 'high'
+  quality?: 'low' | 'medium' | 'high',
+  maxSizeInMB?: number
 } = {}): Uint8Array => {
   console.log("Starting audio compression process");
   
   const channels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const quality = options.quality || 'medium';
+  const maxSizeInMB = options.maxSizeInMB || 16; // Default max size to 16MB
   
-  console.log(`Audio specs: ${channels} channels, ${sampleRate}Hz, quality setting: ${quality}`);
+  console.log(`Audio specs: ${channels} channels, ${sampleRate}Hz, quality setting: ${quality}, max size: ${maxSizeInMB}MB`);
   
-  // Determine bitDepth and targetSampleRate based on quality
-  let bitDepth = 16; // Default bit depth
-  let targetSampleRate = sampleRate; // Default to original
+  // Start with initial compression settings
+  let bitDepth = 16;
+  let targetSampleRate = sampleRate;
+  let monoDownmix = false;
   
+  // Apply quality settings
   if (quality === 'low') {
     bitDepth = 8;
     targetSampleRate = Math.min(22050, sampleRate);
+    monoDownmix = true;
   } else if (quality === 'medium') {
     bitDepth = 16;
     targetSampleRate = Math.min(32000, sampleRate);
+    monoDownmix = channels > 1;
   } else {
     // high quality
     bitDepth = 16;
     targetSampleRate = Math.min(44100, sampleRate);
+    monoDownmix = false;
   }
   
-  console.log(`Compression settings: ${bitDepth}-bit, ${targetSampleRate}Hz`);
+  // Process buffer with initial settings
+  let processedBuffer = buffer;
+  
+  // Convert to mono if needed
+  if (monoDownmix && channels > 1) {
+    processedBuffer = reduceToMono(buffer);
+  }
   
   // Resample if needed
-  let processedBuffer = buffer;
   if (targetSampleRate !== sampleRate) {
-    processedBuffer = resampleAudioBuffer(buffer, targetSampleRate);
+    processedBuffer = resampleAudioBuffer(processedBuffer, targetSampleRate);
   }
   
-  // Convert to WAV with specified bit depth
-  return encodeWAV(processedBuffer, bitDepth);
+  // Try initial compression with specified settings
+  let compressedData = encodeWAV(processedBuffer, bitDepth);
+  let currentSizeMB = compressedData.length / (1024 * 1024);
+  
+  console.log(`Initial compression result: ${currentSizeMB.toFixed(2)}MB with ${bitDepth}-bit, ${targetSampleRate}Hz, mono: ${monoDownmix}`);
+  
+  // Progressive compression if still over size limit
+  let compressionAttempt = 1;
+  const maxAttempts = 5;
+  
+  while (currentSizeMB > maxSizeInMB && compressionAttempt < maxAttempts) {
+    console.log(`Compression attempt ${compressionAttempt}: File still too large (${currentSizeMB.toFixed(2)}MB), adjusting parameters...`);
+    
+    // Progressively stronger compression settings
+    if (compressionAttempt === 1) {
+      // First attempt: reduce to mono if not already
+      if (processedBuffer.numberOfChannels > 1) {
+        processedBuffer = reduceToMono(processedBuffer);
+        console.log("Reducing to mono");
+      } else {
+        // If already mono, reduce bit depth
+        bitDepth = Math.max(8, bitDepth - 8);
+        console.log(`Reducing bit depth to ${bitDepth}`);
+      }
+    } else if (compressionAttempt === 2) {
+      // Second attempt: reduce sample rate
+      targetSampleRate = Math.max(16000, Math.floor(targetSampleRate * 0.75));
+      processedBuffer = resampleAudioBuffer(processedBuffer, targetSampleRate);
+      console.log(`Reducing sample rate to ${targetSampleRate}Hz`);
+    } else if (compressionAttempt === 3) {
+      // Third attempt: set bit depth to minimum
+      bitDepth = 8;
+      console.log("Setting bit depth to minimum (8-bit)");
+    } else {
+      // More aggressive sample rate reduction for the last attempts
+      targetSampleRate = Math.max(8000, Math.floor(targetSampleRate * 0.5));
+      processedBuffer = resampleAudioBuffer(processedBuffer, targetSampleRate);
+      console.log(`Aggressively reducing sample rate to ${targetSampleRate}Hz`);
+    }
+    
+    // Try new compression settings
+    compressedData = encodeWAV(processedBuffer, bitDepth);
+    currentSizeMB = compressedData.length / (1024 * 1024);
+    
+    console.log(`After adjustment: ${currentSizeMB.toFixed(2)}MB with ${bitDepth}-bit, ${targetSampleRate}Hz, mono: ${processedBuffer.numberOfChannels === 1}`);
+    
+    compressionAttempt++;
+  }
+  
+  // Final fallback if still over size limit: truncate the audio
+  if (currentSizeMB > maxSizeInMB) {
+    console.log(`Still exceeding ${maxSizeInMB}MB limit after all compression attempts. Will truncate audio.`);
+    
+    // Estimate the reduction ratio needed
+    const reductionRatio = maxSizeInMB / currentSizeMB * 0.95; // 5% safety margin
+    const newLength = Math.floor(processedBuffer.length * reductionRatio);
+    
+    console.log(`Truncating audio to ${reductionRatio.toFixed(2) * 100}% of current length`);
+    
+    // Create a truncated buffer
+    const truncatedBuffer = new AudioContext().createBuffer(
+      processedBuffer.numberOfChannels,
+      newLength,
+      processedBuffer.sampleRate
+    );
+    
+    // Copy data to the truncated buffer
+    for (let channel = 0; channel < processedBuffer.numberOfChannels; channel++) {
+      const channelData = truncatedBuffer.getChannelData(channel);
+      channelData.set(processedBuffer.getChannelData(channel).slice(0, newLength));
+    }
+    
+    // Final compression
+    compressedData = encodeWAV(truncatedBuffer, bitDepth);
+    currentSizeMB = compressedData.length / (1024 * 1024);
+    console.log(`Final output size after truncation: ${currentSizeMB.toFixed(2)}MB`);
+  }
+  
+  // Final output
+  console.log(`Final compression settings: ${bitDepth}-bit, ${targetSampleRate}Hz, ${processedBuffer.numberOfChannels} channel(s)`);
+  console.log(`Compressed file size: ${currentSizeMB.toFixed(2)}MB`);
+  
+  return compressedData;
 };
 
 // Improved MP3 compression using lamejs
 export const audioBufferToMp3 = (buffer: AudioBuffer, options: {
   bitRate?: number,
-  quality?: 'low' | 'medium' | 'high'
+  quality?: 'low' | 'medium' | 'high',
+  maxSizeInMB?: number
 } = {}): Uint8Array => {
   console.log("Converting audio buffer to MP3 format");
   
@@ -75,6 +169,7 @@ export const audioBufferToMp3 = (buffer: AudioBuffer, options: {
     // Determine MP3 settings based on quality
     let quality = options.quality || 'medium';
     let bitRate = options.bitRate;
+    const maxSizeInMB = options.maxSizeInMB || 16; // Default max size to 16MB
     
     if (!bitRate) {
       // Set bitRate based on quality if not explicitly provided
@@ -87,11 +182,56 @@ export const audioBufferToMp3 = (buffer: AudioBuffer, options: {
       }
     }
     
-    console.log(`MP3 compression settings: ${bitRate}kbps`);
+    console.log(`MP3 compression settings: ${bitRate}kbps, max size: ${maxSizeInMB}MB`);
     
     // Prepare the audio data
-    const numChannels = buffer.numberOfChannels;
-    const sampleRate = buffer.sampleRate;
+    let numChannels = buffer.numberOfChannels;
+    let sampleRate = buffer.sampleRate;
+    let processedBuffer = buffer;
+    
+    // Initial size estimation (rough approximation: duration * bitrate / 8)
+    const durationSeconds = buffer.length / buffer.sampleRate;
+    const estimatedSizeMB = (durationSeconds * bitRate * 1000) / (8 * 1024 * 1024);
+    
+    console.log(`Estimated MP3 size at ${bitRate}kbps: ~${estimatedSizeMB.toFixed(2)}MB`);
+    
+    // Pre-process to reduce size if estimation is too large
+    if (estimatedSizeMB > maxSizeInMB * 0.9) { // 10% margin
+      console.log("Estimated size exceeds target, applying pre-processing steps");
+      
+      // Progressive adjustments
+      if (numChannels > 1) {
+        // Step 1: Convert to mono
+        processedBuffer = reduceToMono(buffer);
+        numChannels = 1;
+        console.log("Pre-processing: Converting to mono");
+      }
+      
+      // Step 2: Reduce sample rate if needed
+      if (estimatedSizeMB > maxSizeInMB * 0.7) {
+        const targetSampleRate = sampleRate > 44100 ? 44100 :
+                                sampleRate > 32000 ? 32000 :
+                                sampleRate > 22050 ? 22050 : 16000;
+        
+        if (targetSampleRate < sampleRate) {
+          processedBuffer = resampleAudioBuffer(processedBuffer, targetSampleRate);
+          sampleRate = targetSampleRate;
+          console.log(`Pre-processing: Reducing sample rate to ${targetSampleRate}Hz`);
+        }
+      }
+      
+      // Step 3: Reduce bitrate as a last resort
+      if (estimatedSizeMB > maxSizeInMB * 0.5) {
+        bitRate = Math.min(bitRate, 96); // Cap at 96kbps
+        console.log(`Pre-processing: Reducing bitrate to ${bitRate}kbps`);
+      }
+      
+      // If still likely to be too large, reduce further
+      if (estimatedSizeMB > maxSizeInMB) {
+        bitRate = Math.min(bitRate, 64); // Last resort: 64kbps
+        console.log(`Pre-processing: Further reducing bitrate to ${bitRate}kbps`);
+      }
+    }
     
     // MP3 encoder works with stereo or mono
     const mp3encoder = new lamejs.Mp3Encoder(
@@ -106,18 +246,18 @@ export const audioBufferToMp3 = (buffer: AudioBuffer, options: {
     // Extract and prepare channel data
     let leftChannel, rightChannel;
     
-    if (numChannels > 0) leftChannel = buffer.getChannelData(0);
-    if (numChannels > 1) rightChannel = buffer.getChannelData(1);
+    if (numChannels > 0) leftChannel = processedBuffer.getChannelData(0);
+    if (numChannels > 1) rightChannel = processedBuffer.getChannelData(1);
     
     // Process the audio data in chunks
-    for (let i = 0; i < buffer.length; i += bufferSize) {
+    for (let i = 0; i < processedBuffer.length; i += bufferSize) {
       // Create sample arrays for each chunk
-      const leftChunk = new Int16Array(Math.min(bufferSize, buffer.length - i));
-      const rightChunk = numChannels > 1 ? new Int16Array(Math.min(bufferSize, buffer.length - i)) : null;
+      const leftChunk = new Int16Array(Math.min(bufferSize, processedBuffer.length - i));
+      const rightChunk = numChannels > 1 ? new Int16Array(Math.min(bufferSize, processedBuffer.length - i)) : null;
       
       // Convert float32 to int16
       for (let j = 0; j < leftChunk.length; j++) {
-        if (i + j < buffer.length) {
+        if (i + j < processedBuffer.length) {
           // Convert from [-1.0, 1.0] to [-32768, 32767]
           const leftSample = Math.max(-1, Math.min(1, leftChannel[i + j]));
           leftChunk[j] = leftSample < 0 ? leftSample * 0x8000 : leftSample * 0x7FFF;
@@ -158,7 +298,18 @@ export const audioBufferToMp3 = (buffer: AudioBuffer, options: {
       offset += buf.length;
     }
     
-    console.log(`MP3 compression successful, output size: ${result.length} bytes`);
+    const finalSizeMB = result.length / (1024 * 1024);
+    console.log(`MP3 compression successful, output size: ${finalSizeMB.toFixed(2)}MB`);
+    
+    // Final size check - if still too large, fall back to WAV with aggressive compression
+    if (finalSizeMB > maxSizeInMB) {
+      console.log(`MP3 output still exceeds ${maxSizeInMB}MB limit, falling back to WAV compression`);
+      return audioBufferToCompressedFormat(buffer, { 
+        quality: 'low', 
+        maxSizeInMB: maxSizeInMB 
+      });
+    }
+    
     return result;
     
   } catch (error) {
@@ -167,7 +318,10 @@ export const audioBufferToMp3 = (buffer: AudioBuffer, options: {
     
     // If MP3 compression fails, fall back to WAV compression
     const fallbackQuality = options.quality || 'medium';
-    return audioBufferToCompressedFormat(buffer, { quality: fallbackQuality });
+    return audioBufferToCompressedFormat(buffer, { 
+      quality: fallbackQuality,
+      maxSizeInMB: options.maxSizeInMB || 16
+    });
   }
 };
 
