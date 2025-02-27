@@ -99,6 +99,30 @@ export type Database = {
         }
         Relationships: []
       }
+      watermark_audio: {
+        Row: {
+          content_type: string
+          created_at: string
+          filename: string
+          id: string
+          storage_path: string
+        }
+        Insert: {
+          content_type?: string
+          created_at?: string
+          filename: string
+          id?: string
+          storage_path: string
+        }
+        Update: {
+          content_type?: string
+          created_at?: string
+          filename?: string
+          id?: string
+          storage_path?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

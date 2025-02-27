@@ -1,3 +1,4 @@
+
 /**
  * Utility functions for audio processing
  */
@@ -41,11 +42,13 @@ export const fetchWatermarkAudio = async (): Promise<File> => {
     
     const { data: watermarkData, error: dbError } = await supabase
       .from('watermark_audio')
-      .select('storage_path')
+      .select('*')
       .single();
 
     if (dbError) throw new Error(`Database error: ${dbError.message}`);
     if (!watermarkData) throw new Error('No watermark file found in database');
+
+    console.log('Watermark data found:', watermarkData);
 
     const { data: fileData, error: storageError } = await supabase.storage
       .from('audio')
