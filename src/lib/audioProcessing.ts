@@ -21,16 +21,42 @@ export const loadAudioFile = async (audioContext: AudioContext, file: File): Pro
   });
 };
 
-// Enhanced audioBufferToWav function with better quality options
-export const audioBufferToWav = (buffer: AudioBuffer, options: { bitDepth?: number } = {}): Uint8Array => {
+// Enhanced audioBufferToWav function with aggressive compression options
+export const audioBufferToWav = (buffer: AudioBuffer, options: { bitDepth?: number, sampleRateReduction?: number } = {}): Uint8Array => {
   const numOfChan = buffer.numberOfChannels;
-  const bitDepth = options.bitDepth || 16; // Default to 16-bit for better quality
+  const bitDepth = options.bitDepth || 16; // Default to 16-bit
+  const sampleRateReduction = options.sampleRateReduction || 1; // Default to no reduction
   
-  // Support for 12-bit encoding (stored as 16-bit with reduced precision)
-  const effectiveBitDepth = [8, 12, 16, 24, 32].includes(bitDepth) ? bitDepth : 16;
+  // Apply sample rate reduction if specified
+  let effectiveBuffer = buffer;
+  if (sampleRateReduction > 1) {
+    // Create downsampled buffer
+    const newSampleRate = Math.floor(buffer.sampleRate / sampleRateReduction);
+    const newLength = Math.floor(buffer.length / sampleRateReduction);
+    const downsampledBuffer = new AudioContext().createBuffer(
+      numOfChan, 
+      newLength, 
+      newSampleRate
+    );
+    
+    // Copy data with reduced sample rate
+    for (let channel = 0; channel < numOfChan; channel++) {
+      const inputData = buffer.getChannelData(channel);
+      const outputData = downsampledBuffer.getChannelData(channel);
+      
+      for (let i = 0; i < newLength; i++) {
+        outputData[i] = inputData[Math.min(i * sampleRateReduction, buffer.length - 1)];
+      }
+    }
+    
+    effectiveBuffer = downsampledBuffer;
+  }
+  
+  // Support for multiple bit depths
+  const effectiveBitDepth = [8, 12, 16].includes(bitDepth) ? bitDepth : 16;
   const bytesPerSample = Math.ceil(effectiveBitDepth / 8);
   
-  const length = buffer.length * numOfChan * bytesPerSample;
+  const length = effectiveBuffer.length * numOfChan * bytesPerSample;
   const result = new Uint8Array(44 + length);
   const view = new DataView(result.buffer);
   
@@ -42,8 +68,8 @@ export const audioBufferToWav = (buffer: AudioBuffer, options: { bitDepth?: numb
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true); // PCM format
   view.setUint16(22, numOfChan, true);
-  view.setUint32(24, buffer.sampleRate, true);
-  view.setUint32(28, buffer.sampleRate * bytesPerSample * numOfChan, true);
+  view.setUint32(24, effectiveBuffer.sampleRate, true);
+  view.setUint32(28, effectiveBuffer.sampleRate * bytesPerSample * numOfChan, true);
   view.setUint16(32, numOfChan * bytesPerSample, true);
   view.setUint16(34, bytesPerSample * 8, true); // Bits per sample
   writeString(view, 36, 'data');
@@ -51,12 +77,12 @@ export const audioBufferToWav = (buffer: AudioBuffer, options: { bitDepth?: numb
 
   let offset = 44;
   
-  // Write audio data with appropriate bit depth
+  // Write audio data with appropriate bit depth and compression
   if (bitDepth === 8) {
-    for (let i = 0; i < buffer.length; i++) {
+    for (let i = 0; i < effectiveBuffer.length; i++) {
       for (let channel = 0; channel < numOfChan; channel++) {
         // 8-bit unsigned PCM (0-255)
-        const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
+        const sample = Math.max(-1, Math.min(1, effectiveBuffer.getChannelData(channel)[i]));
         const intSample = Math.round((sample + 1) * 127.5);
         view.setUint8(offset, intSample);
         offset += 1;
@@ -64,9 +90,9 @@ export const audioBufferToWav = (buffer: AudioBuffer, options: { bitDepth?: numb
     }
   } else if (bitDepth === 12) {
     // 12-bit is stored in 16-bit format with reduced precision
-    for (let i = 0; i < buffer.length; i++) {
+    for (let i = 0; i < effectiveBuffer.length; i++) {
       for (let channel = 0; channel < numOfChan; channel++) {
-        const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
+        const sample = Math.max(-1, Math.min(1, effectiveBuffer.getChannelData(channel)[i]));
         // Scale to 12-bit range (-2048 to 2047) instead of 16-bit
         let intSample = Math.round(sample < 0 ? sample * 2048 : sample * 2047);
         // Shift to use 16-bit storage (4 bits of padding)
@@ -76,28 +102,14 @@ export const audioBufferToWav = (buffer: AudioBuffer, options: { bitDepth?: numb
       }
     }
   } else {
-    // 16-bit or higher
-    for (let i = 0; i < buffer.length; i++) {
+    // 16-bit
+    for (let i = 0; i < effectiveBuffer.length; i++) {
       for (let channel = 0; channel < numOfChan; channel++) {
-        const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
-        
-        if (bitDepth === 16) {
-          // Standard 16-bit PCM
-          const intSample = Math.round(sample < 0 ? sample * 32768 : sample * 32767);
-          view.setInt16(offset, intSample, true);
-          offset += 2;
-        } else if (bitDepth === 24) {
-          // 24-bit PCM
-          const intSample = Math.round(sample < 0 ? sample * 8388608 : sample * 8388607);
-          view.setUint8(offset, intSample & 0xFF);
-          view.setUint8(offset + 1, (intSample >> 8) & 0xFF);
-          view.setUint8(offset + 2, (intSample >> 16) & 0xFF);
-          offset += 3;
-        } else if (bitDepth === 32) {
-          // 32-bit float (not PCM)
-          view.setFloat32(offset, sample, true);
-          offset += 4;
-        }
+        const sample = Math.max(-1, Math.min(1, effectiveBuffer.getChannelData(channel)[i]));
+        // Standard 16-bit PCM
+        const intSample = Math.round(sample < 0 ? sample * 32768 : sample * 32767);
+        view.setInt16(offset, intSample, true);
+        offset += 2;
       }
     }
   }
@@ -110,4 +122,26 @@ export const writeString = (view: DataView, offset: number, string: string) => {
   for (let i = 0; i < string.length; i++) {
     view.setUint8(offset + i, string.charCodeAt(i));
   }
+};
+
+// New function to reduce audio channels to mono if needed
+export const reduceToMono = (buffer: AudioBuffer): AudioBuffer => {
+  if (buffer.numberOfChannels === 1) {
+    return buffer; // Already mono
+  }
+  
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const monoBuffer = audioContext.createBuffer(1, buffer.length, buffer.sampleRate);
+  const monoData = monoBuffer.getChannelData(0);
+  
+  // Mix all channels down to mono
+  for (let i = 0; i < buffer.length; i++) {
+    let sum = 0;
+    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+      sum += buffer.getChannelData(channel)[i];
+    }
+    monoData[i] = sum / buffer.numberOfChannels;
+  }
+  
+  return monoBuffer;
 };

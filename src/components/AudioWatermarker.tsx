@@ -7,22 +7,24 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { AudioWaveform, AudioLines, Upload, ChevronDown, ChevronUp, Settings } from "lucide-react";
+import { AudioWaveform, AudioLines, Upload, ChevronDown, ChevronUp, Settings, FileText } from "lucide-react";
 import { addWatermark, generateUniqueFilename } from "@/lib/audioUtils";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const AudioWatermarker: React.FC = () => {
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [watermarkVolume, setWatermarkVolume] = useState(1.0); // 100% volume by default
-  const [watermarkInterval, setWatermarkInterval] = useState(10); // Updated to 10 seconds default
+  const [watermarkInterval, setWatermarkInterval] = useState(10); // 10 seconds default
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSettings, setShowSettings] = useState(false); // Default hide settings
   const dropzoneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileSize, setFileSize] = useState<string | null>(null);
 
   // Process files with watermark
   const processFiles = async () => {
@@ -45,6 +47,7 @@ const AudioWatermarker: React.FC = () => {
         setProgress(currentProgress);
 
         console.log(`Processing file ${i + 1} of ${files.length}: ${file.name}`);
+        const originalSize = (file.size / 1024 / 1024).toFixed(2);
         
         // Process file with our watermarking method
         const outputBlob = await addWatermark(
@@ -52,6 +55,13 @@ const AudioWatermarker: React.FC = () => {
           watermarkVolume,
           watermarkInterval
         );
+
+        const compressedSize = (outputBlob.size / 1024 / 1024).toFixed(2);
+        const compressionRatio = (file.size / outputBlob.size).toFixed(2);
+        console.log(`Compression: ${originalSize}MB → ${compressedSize}MB (${compressionRatio}x)`);
+        
+        // Update file size info for display
+        setFileSize(`Original: ${originalSize}MB, Compressed: ${compressedSize}MB, Ratio: ${compressionRatio}x`);
 
         // Generate the trial filename
         const originalName = file.name;
@@ -84,7 +94,6 @@ const AudioWatermarker: React.FC = () => {
       });
     } finally {
       setIsProcessing(false);
-      setProgress(0);
     }
   };
 
@@ -105,6 +114,7 @@ const AudioWatermarker: React.FC = () => {
       }
       
       setFiles(audioFiles);
+      setFileSize(null); // Reset file size info
     }
   };
 
@@ -155,6 +165,7 @@ const AudioWatermarker: React.FC = () => {
       }
       
       setFiles(audioFiles);
+      setFileSize(null); // Reset file size info
     }
   }, [toast]);
 
@@ -230,6 +241,7 @@ const AudioWatermarker: React.FC = () => {
               </Button>
             </div>
 
+            {/* Selected Files */}
             {files.length > 0 && (
               <div className="mt-6">
                 <h3 className="font-medium mb-2">Selected Files ({files.length})</h3>
@@ -248,6 +260,14 @@ const AudioWatermarker: React.FC = () => {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+            
+            {/* File Size Information */}
+            {fileSize && (
+              <div className="mt-4 p-3 bg-muted/30 rounded-md flex items-center gap-2">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">{fileSize}</span>
               </div>
             )}
           </CardContent>
@@ -314,6 +334,7 @@ const AudioWatermarker: React.FC = () => {
                     Set how often the watermark appears in the audio
                   </p>
                 </div>
+
               </CardContent>
             </CollapsibleContent>
           </Collapsible>
