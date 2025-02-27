@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { AudioWaveform, AudioLines } from "lucide-react";
+import { AudioWaveform, AudioLines, Upload } from "lucide-react";
 import { loadFFmpeg, addWatermark, generateUniqueFilename } from "@/lib/audioUtils";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { Separator } from "@/components/ui/separator";
@@ -23,6 +23,7 @@ const AudioWatermarker: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const dropzoneRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize FFmpeg
   const initFFmpeg = async () => {
@@ -123,6 +124,13 @@ const AudioWatermarker: React.FC = () => {
     }
   };
 
+  // Trigger file input click
+  const handleBrowseClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
   // Handle drag and drop
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -201,7 +209,6 @@ const AudioWatermarker: React.FC = () => {
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               className="border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer hover:border-primary"
-              onClick={() => document.getElementById("file-upload")?.click()}
             >
               <div className="flex flex-col items-center justify-center space-y-4">
                 <AudioLines className="h-12 w-12 text-muted-foreground" />
@@ -217,6 +224,7 @@ const AudioWatermarker: React.FC = () => {
                 </div>
                 <Input
                   id="file-upload"
+                  ref={fileInputRef}
                   type="file"
                   multiple
                   accept="audio/*"
@@ -225,6 +233,19 @@ const AudioWatermarker: React.FC = () => {
                   disabled={isInitializing || isProcessing}
                 />
               </div>
+            </div>
+
+            {/* Browse Files Button */}
+            <div className="mt-4 flex justify-center">
+              <Button 
+                onClick={handleBrowseClick}
+                disabled={isInitializing || isProcessing}
+                variant="outline"
+                className="gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                Browse Files
+              </Button>
             </div>
 
             {files.length > 0 && (
@@ -324,3 +345,4 @@ const AudioWatermarker: React.FC = () => {
 };
 
 export default AudioWatermarker;
+

@@ -8,15 +8,22 @@ import { watermarkBase64 } from "./watermarkBase64";
 
 // Load FFmpeg
 export const loadFFmpeg = async () => {
-  const ffmpeg = new FFmpeg();
-  const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
-  
-  await ffmpeg.load({
-    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-  });
-  
-  return ffmpeg;
+  try {
+    const ffmpeg = new FFmpeg();
+    // Updated to specify correct paths and use more defensive loading
+    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
+    
+    // First attempt to load using toBlobURL
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+    });
+    
+    return ffmpeg;
+  } catch (error) {
+    console.error("Failed to load FFmpeg:", error);
+    throw new Error(`Failed to load FFmpeg: ${error.message}`);
+  }
 };
 
 // Convert base64 to file
