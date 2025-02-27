@@ -22,10 +22,15 @@ export const loadAudioFile = async (audioContext: AudioContext, file: File): Pro
 };
 
 // Enhanced audioBufferToWav function with more aggressive compression options
-export const audioBufferToWav = (buffer: AudioBuffer, options: { bitDepth?: number, sampleRateReduction?: number } = {}): Uint8Array => {
+export const audioBufferToWav = (buffer: AudioBuffer, options: { 
+  bitDepth?: number, 
+  sampleRateReduction?: number,
+  compressionLevel?: 'low' | 'medium' | 'high'
+} = {}): Uint8Array => {
   const numOfChan = buffer.numberOfChannels;
   const bitDepth = options.bitDepth || 16; // Default to 16-bit
   const sampleRateReduction = options.sampleRateReduction || 1; // Default to no reduction
+  const compressionLevel = options.compressionLevel || 'medium';
   
   // Apply sample rate reduction if specified
   let effectiveBuffer = buffer;
@@ -60,17 +65,23 @@ export const audioBufferToWav = (buffer: AudioBuffer, options: { bitDepth?: numb
   }
   
   // Apply dynamic compression to reduce peaks (which helps with size)
+  const compressionRatio = 
+    compressionLevel === 'high' ? 6 : 
+    compressionLevel === 'medium' ? 4 : 2;
+  
+  const compressionThreshold = 
+    compressionLevel === 'high' ? 0.2 : 
+    compressionLevel === 'medium' ? 0.3 : 0.4;
+  
   for (let channel = 0; channel < numOfChan; channel++) {
     const data = effectiveBuffer.getChannelData(channel);
-    const threshold = 0.3;
-    const ratio = 4; // 4:1 compression ratio for aggressive peak reduction
     
     for (let i = 0; i < data.length; i++) {
       const abs = Math.abs(data[i]);
-      if (abs > threshold) {
+      if (abs > compressionThreshold) {
         // Apply compression only to peaks
-        const diff = abs - threshold;
-        const compressed = threshold + diff / ratio;
+        const diff = abs - compressionThreshold;
+        const compressed = compressionThreshold + diff / compressionRatio;
         data[i] = data[i] > 0 ? compressed : -compressed;
       }
     }

@@ -11,7 +11,7 @@ export * from "./audioFileConversion";
 export * from "./audioWatermark";
 export * from "./audioProcessing";
 
-// Add watermark to audio with improved clarity
+// Add watermark to audio with improved clarity and compression
 export const addWatermark = async (
   inputFile: File,
   watermarkVolume: number,
@@ -40,25 +40,40 @@ export const addWatermark = async (
     const fileSizeMB = inputFile.size / (1024 * 1024);
     console.log(`Original file size: ${fileSizeMB.toFixed(2)} MB`);
     
-    // Compression settings based on file size
+    // Adaptive compression settings based on file size
     let bitDepth = 16;
     let sampleRateReduction = 1;
     let convertToMono = false;
+    let compressionLevel: 'low' | 'medium' | 'high' = 'medium';
     
     // Progressive compression for larger files
-    if (fileSizeMB > 20) {
-      // Very large files: moderate compression
+    if (fileSizeMB > 30) {
+      // Very large files: aggressive compression
+      bitDepth = 8;
+      sampleRateReduction = 3;
+      convertToMono = true;
+      compressionLevel = 'high';
+    } else if (fileSizeMB > 20) {
+      // Large files: strong compression
+      bitDepth = 12;
+      sampleRateReduction = 2.5;
+      convertToMono = fileSizeMB > 25;
+      compressionLevel = 'high';
+    } else if (fileSizeMB > 10) {
+      // Medium-large files: moderate compression
       bitDepth = 16;
       sampleRateReduction = 2;
       convertToMono = false;
-    } else if (fileSizeMB > 10) {
-      // Large files: light compression
+      compressionLevel = 'medium';
+    } else if (fileSizeMB > 5) {
+      // Medium files: light compression
       bitDepth = 16;
       sampleRateReduction = 1.5;
       convertToMono = false;
+      compressionLevel = 'low';
     }
     
-    console.log(`Compression settings: ${bitDepth}-bit, ${sampleRateReduction}x sample rate reduction, mono: ${convertToMono}`);
+    console.log(`Compression settings: ${bitDepth}-bit, ${sampleRateReduction}x sample rate reduction, mono: ${convertToMono}, compression level: ${compressionLevel}`);
     
     // Convert to mono if needed for size reduction
     const effectiveInputBuffer = convertToMono ? reduceToMono(inputBuffer) : inputBuffer;
@@ -177,10 +192,13 @@ export const addWatermark = async (
     // Convert to WAV with compression settings
     const finalAudio = audioBufferToWav(outputBuffer, {
       bitDepth,
-      sampleRateReduction: 1 // Already applied above
+      sampleRateReduction: 1, // Already applied above
+      compressionLevel
     });
     
+    const compressionRatio = inputFile.size / finalAudio.length;
     console.log(`Audio watermarking completed with compression. Output size: ${finalAudio.length / 1024} KB`);
+    console.log(`Compression ratio: ${compressionRatio.toFixed(2)}x`);
     
     return new Blob([finalAudio], { 
       type: "audio/wav"
