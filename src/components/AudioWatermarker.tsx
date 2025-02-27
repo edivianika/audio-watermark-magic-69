@@ -16,7 +16,7 @@ const AudioWatermarker: React.FC = () => {
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [watermarkVolume, setWatermarkVolume] = useState(0.75); // 75% volume
+  const [watermarkVolume, setWatermarkVolume] = useState(1.0); // 100% volume by default
   const [watermarkInterval, setWatermarkInterval] = useState(10); // Updated to 10 seconds default
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
