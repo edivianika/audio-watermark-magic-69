@@ -4,21 +4,41 @@
  */
 import { watermarkBase64 } from "./watermarkBase64";
 
-// Convert base64 to file with corrected approach
+// Convert base64 to file with improved error handling
 export const base64ToFile = async (base64String: string, filename: string) => {
-  // Convert base64 to Blob directly without fetch
-  const byteString = atob(base64String.split(',')[1]);
-  const mimeType = base64String.split(',')[0].split(':')[1].split(';')[0];
-  
-  const ab = new ArrayBuffer(byteString.length);
-  const ia = new Uint8Array(ab);
-  
-  for (let i = 0; i < byteString.length; i++) {
-    ia[i] = byteString.charCodeAt(i);
+  try {
+    // Check if the base64 string is properly formatted
+    if (!base64String.includes('base64,')) {
+      // For strings that don't have the data URI prefix, assume they're raw base64
+      base64String = `data:audio/mpeg;base64,${base64String}`;
+    }
+    
+    // Split the data URI to get the base64 part
+    const parts = base64String.split('base64,');
+    if (parts.length !== 2) {
+      throw new Error('Invalid base64 format');
+    }
+    
+    // Get the MIME type from the data URI
+    const mimeString = parts[0].split(':')[1]?.split(';')[0] || 'audio/mpeg';
+    
+    // Decode the base64 string safely
+    const byteString = window.atob(parts[1]);
+    const arrayBuffer = new ArrayBuffer(byteString.length);
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    // Fill the array buffer with decoded bytes
+    for (let i = 0; i < byteString.length; i++) {
+      uint8Array[i] = byteString.charCodeAt(i);
+    }
+    
+    // Create a blob and file from the array buffer
+    const blob = new Blob([arrayBuffer], { type: mimeString });
+    return new File([blob], filename, { type: mimeString });
+  } catch (error) {
+    console.error('Error converting base64 to file:', error);
+    throw new Error(`Failed to convert base64 to file: ${error.message}`);
   }
-  
-  const blob = new Blob([ab], { type: mimeType });
-  return new File([blob], filename, { type: mimeType });
 };
 
 // Add watermark to audio
@@ -36,77 +56,105 @@ export const addWatermark = async (
     // Load the input audio file
     const inputBuffer = await loadAudioFile(audioContext, inputFile);
     
-    // Load the watermark audio file
-    const watermarkFile = await base64ToFile(watermarkBase64, "watermark.mp3");
-    const watermarkBuffer = await loadAudioFile(audioContext, watermarkFile);
+    console.log("Input audio loaded successfully, loading watermark...");
     
-    // Calculate timing for watermarks
-    const inputDuration = inputBuffer.duration;
-    const watermarkDuration = watermarkBuffer.duration;
-    
-    // Create an output buffer with the same duration as the input
-    const outputBuffer = audioContext.createBuffer(
-      inputBuffer.numberOfChannels,
-      inputBuffer.length,
-      inputBuffer.sampleRate
-    );
-    
-    // First, copy the input audio to the output buffer
-    for (let channel = 0; channel < inputBuffer.numberOfChannels; channel++) {
-      const inputData = inputBuffer.getChannelData(channel);
-      const outputData = outputBuffer.getChannelData(channel);
-      outputData.set(inputData);
-    }
-    
-    // Calculate how many watermarks we'll add
-    const numWatermarks = Math.floor(inputDuration / watermarkInterval);
-    
-    // Add watermarks at intervals
-    for (let i = 0; i < numWatermarks; i++) {
-      const startFrame = Math.floor(i * watermarkInterval * outputBuffer.sampleRate);
+    // Load the watermark audio file with error handling
+    try {
+      const watermarkFile = await base64ToFile(watermarkBase64, "watermark.mp3");
+      console.log("Watermark converted to file successfully");
+      const watermarkBuffer = await loadAudioFile(audioContext, watermarkFile);
+      console.log("Watermark audio loaded successfully");
       
-      // Make sure we don't go past the end of the file
-      if (startFrame + watermarkBuffer.length > outputBuffer.length) {
-        continue;
-      }
+      // Calculate timing for watermarks
+      const inputDuration = inputBuffer.duration;
+      const watermarkDuration = watermarkBuffer.duration;
       
-      // Add the watermark (mix it with the original audio)
-      for (let channel = 0; channel < Math.min(outputBuffer.numberOfChannels, watermarkBuffer.numberOfChannels); channel++) {
+      // Create an output buffer with the same duration as the input
+      const outputBuffer = audioContext.createBuffer(
+        inputBuffer.numberOfChannels,
+        inputBuffer.length,
+        inputBuffer.sampleRate
+      );
+      
+      // First, copy the input audio to the output buffer
+      for (let channel = 0; channel < inputBuffer.numberOfChannels; channel++) {
+        const inputData = inputBuffer.getChannelData(channel);
         const outputData = outputBuffer.getChannelData(channel);
-        const watermarkData = watermarkBuffer.getChannelData(channel);
+        outputData.set(inputData);
+      }
+      
+      // Calculate how many watermarks we'll add
+      const numWatermarks = Math.floor(inputDuration / watermarkInterval);
+      
+      // Add watermarks at intervals
+      for (let i = 0; i < numWatermarks; i++) {
+        const startFrame = Math.floor(i * watermarkInterval * outputBuffer.sampleRate);
         
-        for (let j = 0; j < watermarkBuffer.length; j++) {
-          // Mix watermark audio with original audio
-          // Apply volume adjustment to watermark
-          outputData[startFrame + j] = outputData[startFrame + j] + (watermarkData[j] * watermarkVolume);
+        // Make sure we don't go past the end of the file
+        if (startFrame + watermarkBuffer.length > outputBuffer.length) {
+          continue;
+        }
+        
+        // Add the watermark (mix it with the original audio)
+        for (let channel = 0; channel < Math.min(outputBuffer.numberOfChannels, watermarkBuffer.numberOfChannels); channel++) {
+          const outputData = outputBuffer.getChannelData(channel);
+          const watermarkData = watermarkBuffer.getChannelData(channel);
+          
+          for (let j = 0; j < watermarkBuffer.length; j++) {
+            // Mix watermark audio with original audio
+            // Apply volume adjustment to watermark
+            outputData[startFrame + j] = outputData[startFrame + j] + (watermarkData[j] * watermarkVolume);
+          }
         }
       }
-    }
-    
-    // Normalize to prevent clipping
-    for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
-      const outputData = outputBuffer.getChannelData(channel);
       
-      // Find the maximum absolute value
-      let max = 0;
-      for (let i = 0; i < outputData.length; i++) {
-        max = Math.max(max, Math.abs(outputData[i]));
-      }
-      
-      // If we would clip, scale everything down
-      if (max > 1.0) {
-        const scale = 0.95 / max; // Leave a little headroom
+      // Normalize to prevent clipping
+      for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
+        const outputData = outputBuffer.getChannelData(channel);
+        
+        // Find the maximum absolute value
+        let max = 0;
         for (let i = 0; i < outputData.length; i++) {
-          outputData[i] *= scale;
+          max = Math.max(max, Math.abs(outputData[i]));
+        }
+        
+        // If we would clip, scale everything down
+        if (max > 1.0) {
+          const scale = 0.95 / max; // Leave a little headroom
+          for (let i = 0; i < outputData.length; i++) {
+            outputData[i] *= scale;
+          }
         }
       }
+      
+      // Convert the processed buffer back to a Blob
+      const finalAudio = await audioBufferToWav(outputBuffer);
+      console.log("Audio watermarking completed successfully");
+      
+      return new Blob([finalAudio], { type: "audio/wav" });
+    } catch (watermarkError) {
+      console.error("Error loading watermark:", watermarkError);
+      // If watermark fails, return the original audio instead of failing completely
+      const message = "Watermark could not be applied, returning original audio";
+      console.warn(message);
+      
+      // Convert original audio to WAV
+      const outputBuffer = audioContext.createBuffer(
+        inputBuffer.numberOfChannels,
+        inputBuffer.length,
+        inputBuffer.sampleRate
+      );
+      
+      // Copy the input audio to the output buffer
+      for (let channel = 0; channel < inputBuffer.numberOfChannels; channel++) {
+        const inputData = inputBuffer.getChannelData(channel);
+        const outputData = outputBuffer.getChannelData(channel);
+        outputData.set(inputData);
+      }
+      
+      const finalAudio = await audioBufferToWav(outputBuffer);
+      return new Blob([finalAudio], { type: "audio/wav" });
     }
-    
-    // Convert the processed buffer back to a Blob
-    const finalAudio = await audioBufferToWav(outputBuffer);
-    console.log("Audio watermarking completed successfully");
-    
-    return new Blob([finalAudio], { type: "audio/wav" });
   } catch (error) {
     console.error("Error adding watermark:", error);
     throw error;
