@@ -51,11 +51,17 @@ const AudioWatermarker: React.FC = () => {
           watermarkInterval
         );
 
+        // Generate the trial filename
+        const originalName = file.name;
+        const extension = originalName.split('.').pop();
+        const nameWithoutExt = originalName.slice(0, -(extension?.length || 0) - 1);
+        const trialFilename = `${nameWithoutExt}_Trial.${extension}`;
+
         // Create download link
         const url = URL.createObjectURL(outputBlob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = generateUniqueFilename(file.name);
+        a.download = trialFilename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

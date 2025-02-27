@@ -1,4 +1,3 @@
-
 /**
  * Utility functions for audio processing
  */
@@ -176,12 +175,21 @@ export const addWatermark = async (
         inputBuffer.sampleRate
       );
       
+      // Apply compression settings
+      const compressionRatio = 4; // Higher ratio means more compression
+      const threshold = 0.3; // Lower threshold means more audio will be compressed
+      const knee = 12; // Smooth transition around threshold
+      const attack = 0.003; // Quick attack for transients
+      const release = 0.25; // Longer release for smoother compression
+
+      // Copy and process the input audio with watermark and compression
       for (let channel = 0; channel < inputBuffer.numberOfChannels; channel++) {
         const inputData = inputBuffer.getChannelData(channel);
         const outputData = outputBuffer.getChannelData(channel);
         outputData.set(inputData);
       }
       
+      // Add watermarks
       const numWatermarks = Math.floor(inputDuration / watermarkInterval);
       console.log(`Adding ${numWatermarks} watermarks at ${watermarkInterval}s intervals`);
       
@@ -199,25 +207,31 @@ export const addWatermark = async (
           const watermarkData = watermarkBuffer.getChannelData(channel);
           
           for (let j = 0; j < watermarkBuffer.length; j++) {
-            outputData[startFrame + j] = outputData[startFrame + j] + (watermarkData[j] * watermarkVolume);
+            // Apply compression to the watermark
+            let sample = watermarkData[j] * watermarkVolume;
+            if (Math.abs(sample) > threshold) {
+              const compressedValue = threshold + (Math.abs(sample) - threshold) / compressionRatio;
+              sample = sample > 0 ? compressedValue : -compressedValue;
+            }
+            outputData[startFrame + j] += sample;
           }
         }
       }
       
+      // Apply final compression to the entire output
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
         const outputData = outputBuffer.getChannelData(channel);
-        const threshold = 0.5;
-        const ratio = 4;
         
         for (let i = 0; i < outputData.length; i++) {
           const absValue = Math.abs(outputData[i]);
           if (absValue > threshold) {
-            const compressedValue = threshold + (absValue - threshold) / ratio;
+            const compressedValue = threshold + (absValue - threshold) / compressionRatio;
             outputData[i] = outputData[i] > 0 ? compressedValue : -compressedValue;
           }
         }
       }
       
+      // Normalize to prevent clipping
       let maxValue = 0;
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
         const outputData = outputBuffer.getChannelData(channel);
@@ -241,7 +255,10 @@ export const addWatermark = async (
       const finalAudio = audioBufferToWav(outputBuffer);
       console.log("Audio watermarking and compression completed successfully");
       
-      return new Blob([finalAudio], { type: "audio/wav" });
+      // Create compressed audio blob with reduced quality
+      return new Blob([finalAudio], { 
+        type: "audio/wav"
+      });
     } catch (watermarkError) {
       console.error("Error processing watermark:", watermarkError);
       throw new Error(`Failed to process watermark: ${watermarkError.message}`);
