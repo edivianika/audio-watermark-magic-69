@@ -10,14 +10,26 @@ import { watermarkBase64 } from "./watermarkBase64";
 export const loadFFmpeg = async () => {
   try {
     const ffmpeg = new FFmpeg();
-    // Updated to specify correct paths and use more defensive loading
+    
+    // Use a direct CDN approach instead of toBlobURL which might be failing
     const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
     
-    // First attempt to load using toBlobURL
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-    });
+    // Try multiple loading approaches
+    try {
+      // First attempt: standard loading
+      await ffmpeg.load({
+        coreURL: `${baseURL}/ffmpeg-core.js`,
+        wasmURL: `${baseURL}/ffmpeg-core.wasm`,
+      });
+    } catch (error) {
+      console.log("First loading attempt failed, trying with toBlobURL...");
+      
+      // Second attempt: using toBlobURL
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+      });
+    }
     
     return ffmpeg;
   } catch (error) {

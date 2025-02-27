@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -22,16 +22,19 @@ const AudioWatermarker: React.FC = () => {
   const [watermarkInterval, setWatermarkInterval] = useState(20);
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const dropzoneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize FFmpeg
-  const initFFmpeg = async () => {
+  const initFFmpeg = useCallback(async () => {
+    if (isInitializing || isInitialized) return;
+    
     try {
       setIsInitializing(true);
       const ffmpegInstance = await loadFFmpeg();
       setFFmpeg(ffmpegInstance);
-      setIsInitializing(false);
+      setIsInitialized(true);
       toast({
         title: "Ready to use",
         description: "Audio watermarking engine initialized successfully",
@@ -40,12 +43,13 @@ const AudioWatermarker: React.FC = () => {
       console.error("Error initializing FFmpeg:", error);
       toast({
         title: "Initialization Failed",
-        description: "Could not initialize audio processing engine",
+        description: "Could not initialize audio processing engine. Try refreshing the page.",
         variant: "destructive",
       });
+    } finally {
       setIsInitializing(false);
     }
-  };
+  }, [toast, isInitializing, isInitialized]);
 
   // Process files with watermark
   const processFiles = async () => {
@@ -174,10 +178,13 @@ const AudioWatermarker: React.FC = () => {
     }
   }, [toast]);
 
-  // Initialize FFmpeg on mount
-  React.useEffect(() => {
-    initFFmpeg();
-  }, []);
+  // Initialize FFmpeg when component mounts
+  useEffect(() => {
+    // Try to initialize automatically when component mounts
+    initFFmpeg().catch(error => {
+      console.error("Auto-initialization failed:", error);
+    });
+  }, [initFFmpeg]);
 
   return (
     <div className="container mx-auto py-8 max-w-4xl">
@@ -190,6 +197,34 @@ const AudioWatermarker: React.FC = () => {
         </div>
 
         <Separator className="my-6" />
+
+        {!isInitialized && !isInitializing && (
+          <Card className="bg-yellow-50 border-yellow-200">
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center justify-center space-y-4">
+                <p className="text-amber-800">FFmpeg not initialized. Click the button below to initialize:</p>
+                <Button 
+                  onClick={initFFmpeg}
+                  disabled={isInitializing}
+                  variant="default"
+                >
+                  {isInitializing ? "Initializing..." : "Initialize Audio Engine"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {isInitializing && (
+          <Card className="bg-blue-50 border-blue-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
+                <p>Initializing audio processing engine...</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Dropzone */}
         <Card>
@@ -230,7 +265,7 @@ const AudioWatermarker: React.FC = () => {
                   accept="audio/*"
                   className="hidden"
                   onChange={handleFileSelect}
-                  disabled={isInitializing || isProcessing}
+                  disabled={!isInitialized || isProcessing}
                 />
               </div>
             </div>
@@ -239,7 +274,7 @@ const AudioWatermarker: React.FC = () => {
             <div className="mt-4 flex justify-center">
               <Button 
                 onClick={handleBrowseClick}
-                disabled={isInitializing || isProcessing}
+                disabled={!isInitialized || isProcessing}
                 variant="outline"
                 className="gap-2"
               >
@@ -329,12 +364,10 @@ const AudioWatermarker: React.FC = () => {
             <Button 
               className="w-full"
               onClick={processFiles}
-              disabled={isInitializing || isProcessing || files.length === 0}
+              disabled={!isInitialized || isProcessing || files.length === 0}
             >
               {isProcessing
                 ? "Processing..."
-                : isInitializing
-                ? "Initializing..."
                 : "Add Watermark & Download"}
             </Button>
           </CardFooter>
@@ -345,4 +378,3 @@ const AudioWatermarker: React.FC = () => {
 };
 
 export default AudioWatermarker;
-
