@@ -35,7 +35,7 @@ export const base64ToFile = async (base64String: string, filename: string) => {
   }
 };
 
-// Fetch watermark audio from Supabase storage
+// Fetch watermark audio from Supabase storage or use a fallback
 export const fetchWatermarkAudio = async (): Promise<File> => {
   try {
     console.log('Fetching watermark from Supabase storage');
@@ -45,8 +45,15 @@ export const fetchWatermarkAudio = async (): Promise<File> => {
       .select('*')
       .single();
 
-    if (dbError) throw new Error(`Database error: ${dbError.message}`);
-    if (!watermarkData) throw new Error('No watermark file found in database');
+    if (dbError) {
+      console.warn(`Database error: ${dbError.message}, will use fallback watermark`);
+      return await fetchDefaultWatermark();
+    }
+    
+    if (!watermarkData) {
+      console.warn('No watermark file found in database, will use fallback watermark');
+      return await fetchDefaultWatermark();
+    }
 
     console.log('Watermark data found:', watermarkData);
 
@@ -54,13 +61,47 @@ export const fetchWatermarkAudio = async (): Promise<File> => {
       .from('audio')
       .download(watermarkData.storage_path);
 
-    if (storageError) throw new Error(`Storage error: ${storageError.message}`);
-    if (!fileData) throw new Error('No file data received from storage');
+    if (storageError || !fileData) {
+      console.warn(`Storage error: ${JSON.stringify(storageError)}, will use fallback watermark`);
+      return await fetchDefaultWatermark();
+    }
 
     return new File([fileData], 'watermark.mp3', { type: 'audio/mpeg' });
   } catch (error) {
-    console.error('Error fetching watermark:', error);
-    throw new Error(`Failed to fetch watermark: ${error.message}`);
+    console.error('Error fetching watermark from Supabase:', error);
+    console.log('Using fallback watermark instead');
+    return await fetchDefaultWatermark();
+  }
+};
+
+// Fetch a default watermark from a public URL
+const fetchDefaultWatermark = async (): Promise<File> => {
+  try {
+    console.log('Fetching default watermark from URL');
+    const response = await fetch('https://assets.mixkit.co/active_storage/sfx/212/212-preview.mp3');
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    return new File([arrayBuffer], 'watermark.mp3', { type: 'audio/mpeg' });
+  } catch (error) {
+    console.error('Error fetching default watermark:', error);
+    
+    // Create a simple beep sound as last resort fallback
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const sampleRate = audioContext.sampleRate;
+    const buffer = audioContext.createBuffer(1, sampleRate * 0.5, sampleRate);
+    const channelData = buffer.getChannelData(0);
+    
+    for (let i = 0; i < channelData.length; i++) {
+      // Generate a simple beep sound
+      channelData[i] = Math.sin(i * 0.05) * 0.5;
+    }
+    
+    const wavData = audioBufferToWav(buffer);
+    return new File([wavData], 'beep.wav', { type: 'audio/wav' });
   }
 };
 
@@ -101,7 +142,7 @@ export const addWatermark = async (
     
     try {
       const watermarkFile = await fetchWatermarkAudio();
-      console.log("Watermark fetched successfully from Supabase");
+      console.log("Watermark fetched successfully");
       
       const watermarkBuffer = await loadAudioFile(audioContext, watermarkFile);
       console.log("Watermark audio loaded successfully");
