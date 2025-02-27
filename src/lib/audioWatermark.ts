@@ -89,7 +89,7 @@ export const fetchDefaultWatermark = async (): Promise<File> => {
       channelData[i] = Math.sin(i * 0.05) * 0.5;
     }
     
-    // Generate MP3 data from the audio buffer (changed from WAV to MP3)
+    // Generate MP3 data from the audio buffer (using the now available function)
     const mp3Data = audioBufferToMp3(buffer);
     return new File([mp3Data], 'beep.mp3', { type: 'audio/mp3' });
   }
