@@ -4,11 +4,21 @@
  */
 import { watermarkBase64 } from "./watermarkBase64";
 
-// Convert base64 to file
+// Convert base64 to file with corrected approach
 export const base64ToFile = async (base64String: string, filename: string) => {
-  const res = await fetch(base64String);
-  const blob = await res.blob();
-  return new File([blob], filename, { type: blob.type });
+  // Convert base64 to Blob directly without fetch
+  const byteString = atob(base64String.split(',')[1]);
+  const mimeType = base64String.split(',')[0].split(':')[1].split(';')[0];
+  
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  
+  for (let i = 0; i < byteString.length; i++) {
+    ia[i] = byteString.charCodeAt(i);
+  }
+  
+  const blob = new Blob([ab], { type: mimeType });
+  return new File([blob], filename, { type: mimeType });
 };
 
 // Add watermark to audio
