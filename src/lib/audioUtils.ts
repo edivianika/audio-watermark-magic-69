@@ -111,9 +111,9 @@ export const addWatermark = async (
     console.log(`Adding ${numWatermarks} watermarks at ${watermarkFrequency}s intervals`);
     
     // Use a fixed and consistent volume level for the watermark
-    const effectiveWatermarkVolume = 0.5; // 50% volume, consistent for all watermarks
+    const effectiveWatermarkVolume = watermarkVolume;
     
-    // First, analyze and normalize the watermark audio to ensure consistent volume
+    // First, normalize the watermark audio to ensure consistent volume
     const normalizedWatermarkBuffer = audioContext.createBuffer(
       watermarkBuffer.numberOfChannels,
       watermarkBuffer.length,
@@ -129,32 +129,13 @@ export const addWatermark = async (
       }
     }
     
-    // Normalize watermark to ensure consistent volume
+    // Normalize watermark to ensure consistent volume, but preserve the original without fade effects
     const normalizationFactor = maxWatermarkAmplitude > 0 ? 0.8 / maxWatermarkAmplitude : 1;
     for (let channel = 0; channel < watermarkBuffer.numberOfChannels; channel++) {
       const watermarkData = watermarkBuffer.getChannelData(channel);
       const normalizedData = normalizedWatermarkBuffer.getChannelData(channel);
       for (let i = 0; i < watermarkData.length; i++) {
         normalizedData[i] = watermarkData[i] * normalizationFactor;
-      }
-    }
-    
-    // Apply fade-in and fade-out to the normalized watermark for smooth transitions
-    const fadeLength = Math.floor(normalizedWatermarkBuffer.sampleRate * 0.05); // 50ms fade
-    for (let channel = 0; channel < normalizedWatermarkBuffer.numberOfChannels; channel++) {
-      const data = normalizedWatermarkBuffer.getChannelData(channel);
-      
-      // Apply fade-in
-      for (let i = 0; i < fadeLength; i++) {
-        const factor = i / fadeLength;
-        data[i] *= factor;
-      }
-      
-      // Apply fade-out
-      for (let i = 0; i < fadeLength; i++) {
-        const idx = data.length - 1 - i;
-        const factor = i / fadeLength;
-        data[idx] *= factor;
       }
     }
     
@@ -183,18 +164,18 @@ export const addWatermark = async (
         const watermarkChannelIndex = Math.min(channel, normalizedWatermarkBuffer.numberOfChannels - 1);
         const watermarkData = normalizedWatermarkBuffer.getChannelData(watermarkChannelIndex);
         
-        // Improved blending method - fade in and out for smoother transition
+        // Blend the watermark with the original audio without fade-in/fade-out
         for (let j = 0; j < watermarkLengthSamples; j++) {
           if (startFrame + j >= outputData.length) break;
           
-          // Simple crossfade blending - preserves original audio while adding watermark
-          // 70% original + 30% watermark ensures the original audio quality is preserved
-          // but watermark is still clearly audible
+          // Original sample from the input audio
           const originalSample = outputData[startFrame + j];
+          
+          // Watermark sample at full volume without fading
           const watermarkSample = watermarkData[j] * effectiveWatermarkVolume;
           
-          // Linear mix: 70% original + 30% watermark
-          outputData[startFrame + j] = originalSample * 0.7 + watermarkSample * 0.3;
+          // Mix: 50% original + 50% watermark for clear watermark presence
+          outputData[startFrame + j] = originalSample * 0.5 + watermarkSample * 0.5;
         }
       }
     }
