@@ -4,28 +4,28 @@
  */
 
 import { fetchWatermarkAudio } from "./audioWatermark"; 
-import { audioBufferToWav, loadAudioFile, reduceToMono } from "./audioProcessing";
+import { audioBufferToWav, loadAudioFile, reduceToMono, createLightWatermark } from "./audioProcessing";
 
 // Re-export for compatibility
 export * from "./audioFileConversion";
 export * from "./audioWatermark";
 export * from "./audioProcessing";
 
-// Add watermark to audio with aggressive compression for smaller file size
+// Add watermark to audio with lightweight approach for smaller file size
 export const addWatermark = async (
   inputFile: File,
   watermarkVolume: number,
   watermarkInterval: number
 ): Promise<Blob> => {
   try {
-    console.log("Starting audio watermarking process with improved compression");
+    console.log("Starting audio watermarking process with lightweight compression");
     console.log(`Watermark settings: Volume=${watermarkVolume}, Interval=${watermarkInterval}s`);
     
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     
     // Load the input audio file
     const inputBuffer = await loadAudioFile(audioContext, inputFile);
-    console.log("Input audio loaded successfully, loading watermark...");
+    console.log("Input audio loaded successfully");
     
     // Determine file size-based compression settings
     const fileSizeMB = inputFile.size / (1024 * 1024);
@@ -62,11 +62,21 @@ export const addWatermark = async (
     console.log(`Compression settings: ${bitDepth}-bit, ${sampleRateReduction}x sample rate reduction, mono: ${convertToMono}`);
     
     try {
-      const watermarkFile = await fetchWatermarkAudio();
-      console.log("Watermark fetched successfully");
+      // CHANGE: Use locally generated watermark instead of fetching
+      // This is much lighter and produces smaller output files
+      const useEmbeddedWatermark = true;
+      let watermarkBuffer;
       
-      const watermarkBuffer = await loadAudioFile(audioContext, watermarkFile);
-      console.log("Watermark audio loaded successfully");
+      if (useEmbeddedWatermark) {
+        // Create a super lightweight watermark with synthetic "Trial Version" sound
+        watermarkBuffer = createLightWatermark("Trial Version", 1.0);
+        console.log("Using lightweight generated watermark");
+      } else {
+        // Fall back to traditional watermark if needed
+        const watermarkFile = await fetchWatermarkAudio();
+        watermarkBuffer = await loadAudioFile(audioContext, watermarkFile);
+        console.log("Using fetched watermark audio");
+      }
       
       // Convert to mono if needed for size reduction
       const effectiveInputBuffer = convertToMono ? reduceToMono(inputBuffer) : inputBuffer;
@@ -87,40 +97,32 @@ export const addWatermark = async (
         outputSampleRate
       );
       
-      // Process the audio with aggressive smoothing for better compression
+      // Process the audio with improved sample rate reduction for better compression
       for (let channel = 0; channel < numChannels; channel++) {
         const inputData = effectiveInputBuffer.getChannelData(channel);
         const outputData = outputBuffer.getChannelData(channel);
         
-        // Downsample and apply smoothing for better compression
+        // Downsample with improved linear interpolation
         for (let i = 0; i < outputLength; i++) {
-          const srcIdx = Math.min(Math.floor(i * sampleRateReduction), effectiveInputBuffer.length - 1);
+          const exactSrcIdx = i * sampleRateReduction;
+          const srcIdx1 = Math.floor(exactSrcIdx);
+          const srcIdx2 = Math.min(srcIdx1 + 1, effectiveInputBuffer.length - 1);
+          const fraction = exactSrcIdx - srcIdx1;
           
-          // Simple smoothing (average of nearby samples)
-          let sum = 0;
-          let count = 0;
+          // Linear interpolation for smoother downsampling
+          outputData[i] = (1 - fraction) * inputData[srcIdx1] + fraction * inputData[srcIdx2];
           
-          for (let j = -2; j <= 2; j++) {
-            const idx = srcIdx + j;
-            if (idx >= 0 && idx < inputData.length) {
-              sum += inputData[idx];
-              count++;
-            }
-          }
-          
-          outputData[i] = sum / count;
-          
-          // Apply dynamic range compression
-          if (Math.abs(outputData[i]) > 0.4) {
+          // Slight dynamic range compression for better final compression
+          if (Math.abs(outputData[i]) > 0.6) {
             outputData[i] = outputData[i] > 0 
-              ? 0.4 + (outputData[i] - 0.4) * 0.6
-              : -0.4 - (Math.abs(outputData[i]) - 0.4) * 0.6;
+              ? 0.6 + (outputData[i] - 0.6) * 0.5
+              : -0.6 - (Math.abs(outputData[i]) - 0.6) * 0.5;
           }
         }
       }
       
-      // Add watermarks at reduced density for smaller files
-      const watermarkFrequency = Math.max(watermarkInterval, inputDuration / 10); // Maximum of 10 watermarks total
+      // Add watermarks at intervals, but use a much more subtle approach
+      const watermarkFrequency = Math.max(watermarkInterval, inputDuration / 15); // Maximum of 15 watermarks
       const numWatermarks = Math.floor(inputDuration / watermarkFrequency);
       console.log(`Adding ${numWatermarks} watermarks at ${watermarkFrequency}s intervals`);
       
@@ -128,42 +130,37 @@ export const addWatermark = async (
         const startTimeSeconds = i * watermarkFrequency;
         const startFrame = Math.floor(startTimeSeconds * outputBuffer.sampleRate);
         
-        if (startFrame + watermarkBuffer.length / sampleRateReduction > outputBuffer.length) {
+        if (startFrame + watermarkBuffer.length > outputBuffer.length) {
           continue;
         }
         
         console.log(`Adding watermark at ${startTimeSeconds}s`);
         
-        // Scale watermark to fit the output sample rate
+        // Add watermark with improved mixing for better integration and compression
         for (let channel = 0; channel < Math.min(outputBuffer.numberOfChannels, watermarkBuffer.numberOfChannels); channel++) {
           const outputData = outputBuffer.getChannelData(channel);
-          const watermarkData = watermarkBuffer.getChannelData(channel);
+          const watermarkData = watermarkBuffer.getChannelData(0); // Always use first channel from watermark
           
-          // Add watermark with sample rate adjustment
-          const watermarkScaleFactor = watermarkBuffer.sampleRate / outputBuffer.sampleRate;
-          const scaledWatermarkLength = Math.floor(watermarkBuffer.length / watermarkScaleFactor);
-          const fadeLength = Math.min(500, scaledWatermarkLength / 10);
+          // Mix watermark with longer fade-in/out for better quality in compressed files
+          const fadeLength = Math.min(2000, Math.floor(watermarkBuffer.length / 3));
           
-          for (let j = 0; j < scaledWatermarkLength; j++) {
+          for (let j = 0; j < watermarkBuffer.length; j++) {
             if (startFrame + j >= outputData.length) break;
             
-            // Get watermark sample with proper scaling
-            const watermarkIndex = Math.floor(j * watermarkScaleFactor);
-            if (watermarkIndex >= watermarkData.length) break;
-            
-            // Calculate fade factor (0 to 1)
+            // Calculate fade factor (0 to 1) with longer fades
             let fadeFactor = 1;
             if (j < fadeLength) {
               fadeFactor = j / fadeLength; // Fade in
-            } else if (j > scaledWatermarkLength - fadeLength) {
-              fadeFactor = (scaledWatermarkLength - j) / fadeLength; // Fade out
+            } else if (j > watermarkBuffer.length - fadeLength) {
+              fadeFactor = (watermarkBuffer.length - j) / fadeLength; // Fade out
             }
             
-            // Apply volume, fade and reduce watermark amplitude for better compression
-            const watermarkAmp = watermarkData[watermarkIndex] * watermarkVolume * fadeFactor * 0.7;
+            // Apply volume and fade with better mixing ratio for improved compression
+            const watermarkAmp = watermarkData[j] * watermarkVolume * fadeFactor * 0.5;
             
-            // Mix watermark (70% original + 30% watermark)
-            outputData[startFrame + j] = outputData[startFrame + j] * 0.7 + watermarkAmp * 0.3;
+            // Use a more subtle mixing approach (80% original + 20% watermark)
+            // This preserves more of the original audio while still having audible watermark
+            outputData[startFrame + j] = outputData[startFrame + j] * 0.8 + watermarkAmp * 0.2;
           }
         }
       }
