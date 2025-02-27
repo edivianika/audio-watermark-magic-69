@@ -3,34 +3,25 @@
  * Utility functions for audio processing
  */
 import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
+import { fetchFile } from "@ffmpeg/util";
 import { watermarkBase64 } from "./watermarkBase64";
 
-// Load FFmpeg
+// Load FFmpeg with a more reliable approach
 export const loadFFmpeg = async () => {
   try {
     const ffmpeg = new FFmpeg();
     
-    // Use a direct CDN approach instead of toBlobURL which might be failing
+    // Using direct CDN URLs with explicit loading strategy
     const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
     
-    // Try multiple loading approaches
-    try {
-      // First attempt: standard loading
-      await ffmpeg.load({
-        coreURL: `${baseURL}/ffmpeg-core.js`,
-        wasmURL: `${baseURL}/ffmpeg-core.wasm`,
-      });
-    } catch (error) {
-      console.log("First loading attempt failed, trying with toBlobURL...");
-      
-      // Second attempt: using toBlobURL
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-      });
-    }
+    console.log("Starting FFmpeg load with direct URLs");
+    await ffmpeg.load({
+      coreURL: `${baseURL}/ffmpeg-core.js`,
+      wasmURL: `${baseURL}/ffmpeg-core.wasm`,
+      workerURL: `${baseURL}/ffmpeg-core.worker.js`
+    });
     
+    console.log("FFmpeg loaded successfully");
     return ffmpeg;
   } catch (error) {
     console.error("Failed to load FFmpeg:", error);
@@ -60,15 +51,8 @@ export const addWatermark = async (
     const watermarkFile = await base64ToFile(watermarkBase64, "watermark.mp3");
     await ffmpeg.writeFile("watermark.mp3", await fetchFile(watermarkFile));
     
-    // Create filter complex command
-    // This creates a loop of the main audio with the watermark inserted at specified intervals
-    const filterComplex = `
-      [0:a]asplit=2[a][b];
-      [1:a]volume=${watermarkVolume}[watermark];
-      [a]atrim=0:${watermarkInterval}[a1];
-      [a1][watermark]acrossfade=d=0.5:c1=exp:c2=exp[watermarked];
-      [watermarked][b]concat=n=2:v=0:a=1[out]
-    `.replace(/\n\s+/g, '');
+    // Create filter complex command - simplified for more compatibility
+    const filterComplex = `[0:a]asplit=2[a][b];[1:a]volume=${watermarkVolume}[watermark];[a]atrim=0:${watermarkInterval}[a1];[a1][watermark]amix=inputs=2:duration=first[watermarked];[watermarked][b]concat=n=2:v=0:a=1[out]`;
     
     // Execute the FFmpeg command
     await ffmpeg.exec([

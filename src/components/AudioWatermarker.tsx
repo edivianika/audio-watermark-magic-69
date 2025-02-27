@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { AudioWaveform, AudioLines, Upload } from "lucide-react";
+import { AudioWaveform, AudioLines, Upload, RefreshCw } from "lucide-react";
 import { loadFFmpeg, addWatermark, generateUniqueFilename } from "@/lib/audioUtils";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { Separator } from "@/components/ui/separator";
@@ -23,33 +23,40 @@ const AudioWatermarker: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
   const dropzoneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize FFmpeg
   const initFFmpeg = useCallback(async () => {
-    if (isInitializing || isInitialized) return;
+    if (isInitializing) return;
     
     try {
       setIsInitializing(true);
+      setInitError(null);
+      console.log("Starting FFmpeg initialization");
+      
       const ffmpegInstance = await loadFFmpeg();
       setFFmpeg(ffmpegInstance);
       setIsInitialized(true);
+      
       toast({
         title: "Ready to use",
         description: "Audio watermarking engine initialized successfully",
       });
+      console.log("FFmpeg initialization complete");
     } catch (error) {
       console.error("Error initializing FFmpeg:", error);
+      setInitError(error instanceof Error ? error.message : "Unknown error");
       toast({
         title: "Initialization Failed",
-        description: "Could not initialize audio processing engine. Try refreshing the page.",
+        description: "Could not initialize audio processing engine. Try the manual initialization button.",
         variant: "destructive",
       });
     } finally {
       setIsInitializing(false);
     }
-  }, [toast, isInitializing, isInitialized]);
+  }, [toast, isInitializing]);
 
   // Process files with watermark
   const processFiles = async () => {
@@ -178,9 +185,9 @@ const AudioWatermarker: React.FC = () => {
     }
   }, [toast]);
 
-  // Initialize FFmpeg when component mounts
+  // Attempt to initialize FFmpeg when component mounts
   useEffect(() => {
-    // Try to initialize automatically when component mounts
+    console.log("Component mounted, attempting to initialize FFmpeg");
     initFFmpeg().catch(error => {
       console.error("Auto-initialization failed:", error);
     });
@@ -198,29 +205,33 @@ const AudioWatermarker: React.FC = () => {
 
         <Separator className="my-6" />
 
-        {!isInitialized && !isInitializing && (
-          <Card className="bg-yellow-50 border-yellow-200">
+        {!isInitialized && (
+          <Card className={`${initError ? "bg-red-50 border-red-200" : "bg-yellow-50 border-yellow-200"}`}>
             <CardContent className="pt-6">
               <div className="flex flex-col items-center justify-center space-y-4">
-                <p className="text-amber-800">FFmpeg not initialized. Click the button below to initialize:</p>
+                <p className={initError ? "text-red-800" : "text-amber-800"}>
+                  {initError 
+                    ? `FFmpeg initialization failed: ${initError}` 
+                    : "Audio processing engine needs to be initialized"}
+                </p>
                 <Button 
                   onClick={initFFmpeg}
                   disabled={isInitializing}
                   variant="default"
+                  className="flex gap-2"
                 >
-                  {isInitializing ? "Initializing..." : "Initialize Audio Engine"}
+                  {isInitializing ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span>Initializing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4" />
+                      <span>Initialize Audio Engine</span>
+                    </>
+                  )}
                 </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {isInitializing && (
-          <Card className="bg-blue-50 border-blue-200">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
-                <p>Initializing audio processing engine...</p>
               </div>
             </CardContent>
           </Card>
