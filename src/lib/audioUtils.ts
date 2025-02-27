@@ -100,6 +100,7 @@ const fetchDefaultWatermark = async (): Promise<File> => {
       channelData[i] = Math.sin(i * 0.05) * 0.5;
     }
     
+    // Fixed: Await the result from audioBufferToWav which now returns Uint8Array directly
     const wavData = audioBufferToWav(buffer);
     return new File([wavData], 'beep.wav', { type: 'audio/wav' });
   }
@@ -220,7 +221,7 @@ export const addWatermark = async (
         }
       }
       
-      const finalAudio = await audioBufferToWav(outputBuffer);
+      const finalAudio = audioBufferToWav(outputBuffer);
       console.log("Audio watermarking and compression completed successfully");
       
       return new Blob([finalAudio], { type: "audio/wav" });
@@ -253,39 +254,38 @@ const loadAudioFile = async (audioContext: AudioContext, file: File): Promise<Au
 };
 
 // Helper function to convert AudioBuffer to WAV format
-const audioBufferToWav = (buffer: AudioBuffer): Promise<Uint8Array> => {
-  return new Promise((resolve) => {
-    const numOfChan = buffer.numberOfChannels;
-    const length = buffer.length * numOfChan * 2;
-    const result = new Uint8Array(44 + length);
-    const view = new DataView(result.buffer);
-    
-    writeString(view, 0, 'RIFF');
-    view.setUint32(4, 36 + length, true);
-    writeString(view, 8, 'WAVE');
-    writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, numOfChan, true);
-    view.setUint32(24, buffer.sampleRate, true);
-    view.setUint32(28, buffer.sampleRate * 2 * numOfChan, true);
-    view.setUint16(32, numOfChan * 2, true);
-    view.setUint16(34, 16, true);
-    writeString(view, 36, 'data');
-    view.setUint32(40, length, true);
+// Fixed: Changed to return Uint8Array instead of Promise<Uint8Array>
+const audioBufferToWav = (buffer: AudioBuffer): Uint8Array => {
+  const numOfChan = buffer.numberOfChannels;
+  const length = buffer.length * numOfChan * 2;
+  const result = new Uint8Array(44 + length);
+  const view = new DataView(result.buffer);
+  
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + length, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numOfChan, true);
+  view.setUint32(24, buffer.sampleRate, true);
+  view.setUint32(28, buffer.sampleRate * 2 * numOfChan, true);
+  view.setUint16(32, numOfChan * 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, length, true);
 
-    let offset = 44;
-    for (let i = 0; i < buffer.length; i++) {
-      for (let channel = 0; channel < numOfChan; channel++) {
-        const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
-        const intSample = Math.floor(sample < 0 ? sample * 32768 : sample * 32767);
-        view.setInt16(offset, intSample, true);
-        offset += 2;
-      }
+  let offset = 44;
+  for (let i = 0; i < buffer.length; i++) {
+    for (let channel = 0; channel < numOfChan; channel++) {
+      const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
+      const intSample = Math.floor(sample < 0 ? sample * 32768 : sample * 32767);
+      view.setInt16(offset, intSample, true);
+      offset += 2;
     }
+  }
 
-    resolve(result);
-  });
+  return result;
 };
 
 // Helper function to write a string to a DataView
