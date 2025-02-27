@@ -15,8 +15,8 @@ const AudioWatermarker: React.FC = () => {
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [watermarkVolume, setWatermarkVolume] = useState(0.5);
-  const [watermarkInterval, setWatermarkInterval] = useState(20);
+  const [watermarkVolume, setWatermarkVolume] = useState(0.75); // Updated to 75%
+  const [watermarkInterval, setWatermarkInterval] = useState(5); // Updated to 5 seconds
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const dropzoneRef = useRef<HTMLDivElement>(null);
@@ -44,7 +44,7 @@ const AudioWatermarker: React.FC = () => {
 
         console.log(`Processing file ${i + 1} of ${files.length}: ${file.name}`);
         
-        // Process file with our new method
+        // Process file with our watermarking method
         const outputBlob = await addWatermark(
           file,
           watermarkVolume,
@@ -65,13 +65,13 @@ const AudioWatermarker: React.FC = () => {
       setProgress(100);
       toast({
         title: "Processing Complete",
-        description: `Successfully processed ${files.length} file(s)`,
+        description: `Successfully processed ${files.length} file(s) with watermark`,
       });
     } catch (error) {
       console.error("Error processing files:", error);
       toast({
         title: "Processing Failed",
-        description: "An error occurred while processing your files",
+        description: `An error occurred: ${error.message}`,
         variant: "destructive",
       });
     } finally {
@@ -251,7 +251,7 @@ const AudioWatermarker: React.FC = () => {
           <CardContent className="space-y-6">
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <Label htmlFor="watermark-volume">Watermark Volume: {watermarkVolume.toFixed(2)}</Label>
+                <Label htmlFor="watermark-volume">Watermark Volume: {(watermarkVolume * 100).toFixed(0)}%</Label>
               </div>
               <Slider
                 id="watermark-volume"
