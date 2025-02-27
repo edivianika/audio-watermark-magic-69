@@ -110,17 +110,17 @@ export const addWatermark = async (
     
     console.log(`Adding ${numWatermarks} watermarks at ${watermarkFrequency}s intervals`);
     
-    // Use a fixed and consistent volume level for the watermark
-    const effectiveWatermarkVolume = watermarkVolume;
+    // Preserve natural sound by not over-processing watermark
+    const effectiveWatermarkVolume = watermarkVolume * 0.9;
     
-    // First, normalize the watermark audio to ensure consistent volume
-    const normalizedWatermarkBuffer = audioContext.createBuffer(
+    // Prepare watermark buffer with minimal processing to preserve natural sound
+    const naturalWatermarkBuffer = audioContext.createBuffer(
       watermarkBuffer.numberOfChannels,
       watermarkBuffer.length,
       watermarkBuffer.sampleRate
     );
     
-    // Find maximum amplitude in watermark for normalization
+    // Find peak amplitude in watermark for light normalization
     let maxWatermarkAmplitude = 0;
     for (let channel = 0; channel < watermarkBuffer.numberOfChannels; channel++) {
       const watermarkData = watermarkBuffer.getChannelData(channel);
@@ -129,22 +129,24 @@ export const addWatermark = async (
       }
     }
     
-    // Normalize watermark to ensure consistent volume, but preserve the original without fade effects
-    const normalizationFactor = maxWatermarkAmplitude > 0 ? 0.8 / maxWatermarkAmplitude : 1;
+    // Apply gentle normalization to preserve natural sound quality
+    const normalizationFactor = maxWatermarkAmplitude > 0 ? 0.7 / maxWatermarkAmplitude : 1;
     for (let channel = 0; channel < watermarkBuffer.numberOfChannels; channel++) {
       const watermarkData = watermarkBuffer.getChannelData(channel);
-      const normalizedData = normalizedWatermarkBuffer.getChannelData(channel);
+      const naturalData = naturalWatermarkBuffer.getChannelData(channel);
+      
+      // Copy with minimal processing to maintain natural characteristics
       for (let i = 0; i < watermarkData.length; i++) {
-        normalizedData[i] = watermarkData[i] * normalizationFactor;
+        naturalData[i] = watermarkData[i] * normalizationFactor;
       }
     }
     
-    // Add the watermark at regular intervals, preserving both original audio and watermark
+    // Add the watermark at regular intervals with natural sound preservation
     for (let i = 0; i < numWatermarks; i++) {
       const startTimeSeconds = i * watermarkFrequency;
       const startFrame = Math.floor(startTimeSeconds * outputBuffer.sampleRate);
       
-      if (startFrame + normalizedWatermarkBuffer.length > outputBuffer.length) {
+      if (startFrame + naturalWatermarkBuffer.length > outputBuffer.length) {
         continue; // Skip if watermark doesn't fit
       }
       
@@ -152,31 +154,32 @@ export const addWatermark = async (
       
       // Calculate number of samples to blend
       const watermarkLengthSamples = Math.min(
-        normalizedWatermarkBuffer.length,
+        naturalWatermarkBuffer.length,
         outputBuffer.length - startFrame
       );
       
-      // Add watermark using additive blending for all channels
+      // Add watermark using natural sound preserving blend
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
         const outputData = outputBuffer.getChannelData(channel);
         
         // Use watermark channel or first channel if watermark has fewer channels
-        const watermarkChannelIndex = Math.min(channel, normalizedWatermarkBuffer.numberOfChannels - 1);
-        const watermarkData = normalizedWatermarkBuffer.getChannelData(watermarkChannelIndex);
+        const watermarkChannelIndex = Math.min(channel, naturalWatermarkBuffer.numberOfChannels - 1);
+        const watermarkData = naturalWatermarkBuffer.getChannelData(watermarkChannelIndex);
         
-        // Add watermark without reducing original audio volume
+        // Smooth crossfade for more natural integration
         for (let j = 0; j < watermarkLengthSamples; j++) {
           if (startFrame + j >= outputData.length) break;
           
           // Get original audio sample
           const originalSample = outputData[startFrame + j];
           
-          // Get watermark sample with applied volume
+          // Get watermark sample with natural volume
           const watermarkSample = watermarkData[j] * effectiveWatermarkVolume;
           
-          // Additive blending: add watermark ON TOP of original without reducing original volume
-          // Clamp to [-1, 1] range to prevent distortion
-          outputData[startFrame + j] = Math.max(-1, Math.min(1, originalSample + watermarkSample));
+          // Gentle crossfade mix for more natural sound
+          // Prioritize watermark clarity while preserving some background audio
+          const mixRatio = 0.3; // Original audio presence
+          outputData[startFrame + j] = (originalSample * mixRatio) + (watermarkSample * (1 - mixRatio));
         }
       }
     }
