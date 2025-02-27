@@ -5,7 +5,7 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAudioFile } from "./audioFileConversion";
-import { audioBufferToWav } from "./audioProcessing";
+import { audioBufferToMp3 } from "./audioProcessing";
 
 // Fetch watermark audio from Supabase storage or use a fallback
 export const fetchWatermarkAudio = async (): Promise<File> => {
@@ -89,8 +89,8 @@ export const fetchDefaultWatermark = async (): Promise<File> => {
       channelData[i] = Math.sin(i * 0.05) * 0.5;
     }
     
-    // Generate WAV data from the audio buffer
-    const wavData = audioBufferToWav(buffer);
-    return new File([wavData], 'beep.wav', { type: 'audio/wav' });
+    // Generate MP3 data from the audio buffer (changed from WAV to MP3)
+    const mp3Data = audioBufferToMp3(buffer);
+    return new File([mp3Data], 'beep.mp3', { type: 'audio/mp3' });
   }
 };
