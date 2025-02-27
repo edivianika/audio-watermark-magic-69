@@ -30,8 +30,13 @@ export const audioBufferToMp3 = (buffer: AudioBuffer, options: {
   const sampleRate = buffer.sampleRate;
   const kbps = options.kbps || 128;
   
-  // Create MP3 encoder
-  const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, kbps);
+  // Create MP3 encoder - fixing the MPEGMode reference by using the correct mode constant
+  const mp3encoder = new lamejs.Mp3Encoder(
+    channels, 
+    sampleRate, 
+    kbps
+  );
+  
   const mp3Data: Int8Array[] = [];
   
   // Convert to samples
