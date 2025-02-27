@@ -139,7 +139,7 @@ export const addWatermark = async (
       }
     }
     
-    // Add the watermark at regular intervals, mixing it properly with the original audio
+    // Add the watermark at regular intervals, preserving both original audio and watermark
     for (let i = 0; i < numWatermarks; i++) {
       const startTimeSeconds = i * watermarkFrequency;
       const startFrame = Math.floor(startTimeSeconds * outputBuffer.sampleRate);
@@ -156,7 +156,7 @@ export const addWatermark = async (
         outputBuffer.length - startFrame
       );
       
-      // Add watermark using proper blending for all channels
+      // Add watermark using additive blending for all channels
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
         const outputData = outputBuffer.getChannelData(channel);
         
@@ -164,18 +164,19 @@ export const addWatermark = async (
         const watermarkChannelIndex = Math.min(channel, normalizedWatermarkBuffer.numberOfChannels - 1);
         const watermarkData = normalizedWatermarkBuffer.getChannelData(watermarkChannelIndex);
         
-        // Blend the watermark with the original audio without fade-in/fade-out
+        // Add watermark without reducing original audio volume
         for (let j = 0; j < watermarkLengthSamples; j++) {
           if (startFrame + j >= outputData.length) break;
           
-          // Original sample from the input audio
+          // Get original audio sample
           const originalSample = outputData[startFrame + j];
           
-          // Watermark sample at full volume without fading
+          // Get watermark sample with applied volume
           const watermarkSample = watermarkData[j] * effectiveWatermarkVolume;
           
-          // Mix: 50% original + 50% watermark for clear watermark presence
-          outputData[startFrame + j] = originalSample * 0.5 + watermarkSample * 0.5;
+          // Additive blending: add watermark ON TOP of original without reducing original volume
+          // Clamp to [-1, 1] range to prevent distortion
+          outputData[startFrame + j] = Math.max(-1, Math.min(1, originalSample + watermarkSample));
         }
       }
     }
