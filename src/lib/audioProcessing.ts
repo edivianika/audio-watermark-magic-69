@@ -30,29 +30,57 @@ export const audioBufferToMp3 = (buffer: AudioBuffer, options: {
   const sampleRate = buffer.sampleRate;
   const kbps = options.kbps || 128;
   
-  // Create MP3 encoder - fixing the MPEGMode reference by using the correct mode constant
+  // Create MP3 encoder - using proper method to create encoder
+  // In lamejs, Mp3Encoder takes (numChannels, sampleRate, bitRate)
   const mp3encoder = new lamejs.Mp3Encoder(
-    channels, 
-    sampleRate, 
+    channels === 2 ? 2 : 1, // Stereo (2) or Mono (1)
+    sampleRate,
     kbps
   );
   
   const mp3Data: Int8Array[] = [];
   
   // Convert to samples
-  const samples = new Int16Array(buffer.length * channels);
+  const leftChannel = buffer.getChannelData(0);
+  const rightChannel = channels > 1 ? buffer.getChannelData(1) : null;
+  const samples = new Int16Array(buffer.length * (rightChannel ? 2 : 1));
+  
+  // Convert float32 to int16
   for (let i = 0; i < buffer.length; i++) {
-    for (let channel = 0; channel < channels; channel++) {
-      const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
-      samples[i * channels + channel] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+    // Left channel
+    const leftSample = Math.max(-1, Math.min(1, leftChannel[i]));
+    samples[i * (rightChannel ? 2 : 1)] = leftSample < 0 ? leftSample * 0x8000 : leftSample * 0x7FFF;
+    
+    // Right channel (if stereo)
+    if (rightChannel) {
+      const rightSample = Math.max(-1, Math.min(1, rightChannel[i]));
+      samples[i * 2 + 1] = rightSample < 0 ? rightSample * 0x8000 : rightSample * 0x7FFF;
     }
   }
   
-  // Encode to MP3
+  // Encode to MP3 in chunks
   const blockSize = 1152; // This is a standard MP3 block size
-  for (let i = 0; i < samples.length; i += blockSize * channels) {
-    const sampleChunk = samples.subarray(i, i + blockSize * channels);
-    const mp3buf = mp3encoder.encodeBuffer(sampleChunk);
+  let leftChunk, rightChunk, mp3buf;
+  
+  for (let i = 0; i < buffer.length; i += blockSize) {
+    if (channels === 1) {
+      // Mono
+      leftChunk = samples.subarray(i, i + blockSize);
+      mp3buf = mp3encoder.encodeBuffer(leftChunk);
+    } else {
+      // Stereo - separate channels for lamejs
+      leftChunk = new Int16Array(blockSize);
+      rightChunk = new Int16Array(blockSize);
+      
+      // Extract left and right channel data
+      for (let j = 0; j < blockSize && (i + j) < buffer.length; j++) {
+        leftChunk[j] = samples[(i + j) * 2];
+        rightChunk[j] = samples[(i + j) * 2 + 1];
+      }
+      
+      mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+    }
+    
     if (mp3buf.length > 0) {
       mp3Data.push(mp3buf);
     }
