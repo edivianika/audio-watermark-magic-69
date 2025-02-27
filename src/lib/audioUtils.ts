@@ -2,32 +2,7 @@
 /**
  * Utility functions for audio processing
  */
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile } from "@ffmpeg/util";
 import { watermarkBase64 } from "./watermarkBase64";
-
-// Load FFmpeg with a more reliable approach
-export const loadFFmpeg = async () => {
-  try {
-    const ffmpeg = new FFmpeg();
-    
-    // Using direct CDN URLs with explicit loading strategy
-    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
-    
-    console.log("Starting FFmpeg load with direct URLs");
-    await ffmpeg.load({
-      coreURL: `${baseURL}/ffmpeg-core.js`,
-      wasmURL: `${baseURL}/ffmpeg-core.wasm`,
-      workerURL: `${baseURL}/ffmpeg-core.worker.js`
-    });
-    
-    console.log("FFmpeg loaded successfully");
-    return ffmpeg;
-  } catch (error) {
-    console.error("Failed to load FFmpeg:", error);
-    throw new Error(`Failed to load FFmpeg: ${error.message}`);
-  }
-};
 
 // Convert base64 to file
 export const base64ToFile = async (base64String: string, filename: string) => {
@@ -38,39 +13,171 @@ export const base64ToFile = async (base64String: string, filename: string) => {
 
 // Add watermark to audio
 export const addWatermark = async (
-  ffmpeg: FFmpeg,
   inputFile: File,
   watermarkVolume: number,
   watermarkInterval: number
 ): Promise<Blob> => {
   try {
-    // Write input file to memory
-    await ffmpeg.writeFile("input.mp3", await fetchFile(inputFile));
+    console.log("Starting simple audio watermarking process");
     
-    // Write watermark file to memory
+    // Create audio elements
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    // Load the input audio file
+    const inputBuffer = await loadAudioFile(audioContext, inputFile);
+    
+    // Load the watermark audio file
     const watermarkFile = await base64ToFile(watermarkBase64, "watermark.mp3");
-    await ffmpeg.writeFile("watermark.mp3", await fetchFile(watermarkFile));
+    const watermarkBuffer = await loadAudioFile(audioContext, watermarkFile);
     
-    // Create filter complex command - simplified for more compatibility
-    const filterComplex = `[0:a]asplit=2[a][b];[1:a]volume=${watermarkVolume}[watermark];[a]atrim=0:${watermarkInterval}[a1];[a1][watermark]amix=inputs=2:duration=first[watermarked];[watermarked][b]concat=n=2:v=0:a=1[out]`;
+    // Calculate timing for watermarks
+    const inputDuration = inputBuffer.duration;
+    const watermarkDuration = watermarkBuffer.duration;
     
-    // Execute the FFmpeg command
-    await ffmpeg.exec([
-      '-i', 'input.mp3',
-      '-i', 'watermark.mp3',
-      '-filter_complex', filterComplex,
-      '-map', '[out]',
-      'output.mp3'
-    ]);
+    // Create an output buffer with the same duration as the input
+    const outputBuffer = audioContext.createBuffer(
+      inputBuffer.numberOfChannels,
+      inputBuffer.length,
+      inputBuffer.sampleRate
+    );
     
-    // Read the output file
-    const data = await ffmpeg.readFile('output.mp3');
+    // First, copy the input audio to the output buffer
+    for (let channel = 0; channel < inputBuffer.numberOfChannels; channel++) {
+      const inputData = inputBuffer.getChannelData(channel);
+      const outputData = outputBuffer.getChannelData(channel);
+      outputData.set(inputData);
+    }
     
-    // Convert to blob and return
-    return new Blob([data], { type: 'audio/mpeg' });
+    // Calculate how many watermarks we'll add
+    const numWatermarks = Math.floor(inputDuration / watermarkInterval);
+    
+    // Add watermarks at intervals
+    for (let i = 0; i < numWatermarks; i++) {
+      const startFrame = Math.floor(i * watermarkInterval * outputBuffer.sampleRate);
+      
+      // Make sure we don't go past the end of the file
+      if (startFrame + watermarkBuffer.length > outputBuffer.length) {
+        continue;
+      }
+      
+      // Add the watermark (mix it with the original audio)
+      for (let channel = 0; channel < Math.min(outputBuffer.numberOfChannels, watermarkBuffer.numberOfChannels); channel++) {
+        const outputData = outputBuffer.getChannelData(channel);
+        const watermarkData = watermarkBuffer.getChannelData(channel);
+        
+        for (let j = 0; j < watermarkBuffer.length; j++) {
+          // Mix watermark audio with original audio
+          // Apply volume adjustment to watermark
+          outputData[startFrame + j] = outputData[startFrame + j] + (watermarkData[j] * watermarkVolume);
+        }
+      }
+    }
+    
+    // Normalize to prevent clipping
+    for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
+      const outputData = outputBuffer.getChannelData(channel);
+      
+      // Find the maximum absolute value
+      let max = 0;
+      for (let i = 0; i < outputData.length; i++) {
+        max = Math.max(max, Math.abs(outputData[i]));
+      }
+      
+      // If we would clip, scale everything down
+      if (max > 1.0) {
+        const scale = 0.95 / max; // Leave a little headroom
+        for (let i = 0; i < outputData.length; i++) {
+          outputData[i] *= scale;
+        }
+      }
+    }
+    
+    // Convert the processed buffer back to a Blob
+    const finalAudio = await audioBufferToWav(outputBuffer);
+    console.log("Audio watermarking completed successfully");
+    
+    return new Blob([finalAudio], { type: "audio/wav" });
   } catch (error) {
     console.error("Error adding watermark:", error);
     throw error;
+  }
+};
+
+// Helper function to load an audio file into an AudioBuffer
+const loadAudioFile = async (audioContext: AudioContext, file: File): Promise<AudioBuffer> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const arrayBuffer = event.target?.result as ArrayBuffer;
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        resolve(audioBuffer);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+};
+
+// Helper function to convert AudioBuffer to WAV format
+const audioBufferToWav = (buffer: AudioBuffer): Promise<Uint8Array> => {
+  return new Promise((resolve) => {
+    const numOfChan = buffer.numberOfChannels;
+    const length = buffer.length * numOfChan * 2;
+    const result = new Uint8Array(44 + length);
+    const view = new DataView(result.buffer);
+    
+    // RIFF identifier
+    writeString(view, 0, 'RIFF');
+    // file length minus RIFF identifier length and file description length
+    view.setUint32(4, 36 + length, true);
+    // RIFF type
+    writeString(view, 8, 'WAVE');
+    // format chunk identifier
+    writeString(view, 12, 'fmt ');
+    // format chunk length
+    view.setUint32(16, 16, true);
+    // sample format (raw)
+    view.setUint16(20, 1, true);
+    // channel count
+    view.setUint16(22, numOfChan, true);
+    // sample rate
+    view.setUint32(24, buffer.sampleRate, true);
+    // byte rate (sample rate * block align)
+    view.setUint32(28, buffer.sampleRate * 2 * numOfChan, true);
+    // block align (channel count * bytes per sample)
+    view.setUint16(32, numOfChan * 2, true);
+    // bits per sample
+    view.setUint16(34, 16, true);
+    // data chunk identifier
+    writeString(view, 36, 'data');
+    // data chunk length
+    view.setUint32(40, length, true);
+
+    // Write the PCM samples
+    const DATA_START_OFFSET = 44;
+    let offset = DATA_START_OFFSET;
+    for (let i = 0; i < buffer.length; i++) {
+      for (let channel = 0; channel < numOfChan; channel++) {
+        // Interleave channels data
+        const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
+        // Convert to 16-bit signed integer
+        const intSample = Math.floor(sample < 0 ? sample * 32768 : sample * 32767);
+        view.setInt16(offset, intSample, true);
+        offset += 2;
+      }
+    }
+
+    resolve(result);
+  });
+};
+
+// Helper function to write a string to a DataView
+const writeString = (view: DataView, offset: number, string: string) => {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
   }
 };
 

@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -7,60 +7,24 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { AudioWaveform, AudioLines, Upload, RefreshCw } from "lucide-react";
-import { loadFFmpeg, addWatermark, generateUniqueFilename } from "@/lib/audioUtils";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { AudioWaveform, AudioLines, Upload } from "lucide-react";
+import { addWatermark, generateUniqueFilename } from "@/lib/audioUtils";
 import { Separator } from "@/components/ui/separator";
 
 const AudioWatermarker: React.FC = () => {
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
-  const [ffmpeg, setFFmpeg] = useState<FFmpeg | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(false);
   const [watermarkVolume, setWatermarkVolume] = useState(0.5);
   const [watermarkInterval, setWatermarkInterval] = useState(20);
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [initError, setInitError] = useState<string | null>(null);
   const dropzoneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize FFmpeg
-  const initFFmpeg = useCallback(async () => {
-    if (isInitializing) return;
-    
-    try {
-      setIsInitializing(true);
-      setInitError(null);
-      console.log("Starting FFmpeg initialization");
-      
-      const ffmpegInstance = await loadFFmpeg();
-      setFFmpeg(ffmpegInstance);
-      setIsInitialized(true);
-      
-      toast({
-        title: "Ready to use",
-        description: "Audio watermarking engine initialized successfully",
-      });
-      console.log("FFmpeg initialization complete");
-    } catch (error) {
-      console.error("Error initializing FFmpeg:", error);
-      setInitError(error instanceof Error ? error.message : "Unknown error");
-      toast({
-        title: "Initialization Failed",
-        description: "Could not initialize audio processing engine. Try the manual initialization button.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsInitializing(false);
-    }
-  }, [toast, isInitializing]);
-
   // Process files with watermark
   const processFiles = async () => {
-    if (!ffmpeg || files.length === 0) {
+    if (files.length === 0) {
       toast({
         title: "No Files Selected",
         description: "Please select at least one audio file to process",
@@ -78,9 +42,10 @@ const AudioWatermarker: React.FC = () => {
         const currentProgress = Math.round(((i) / files.length) * 100);
         setProgress(currentProgress);
 
-        // Process file
+        console.log(`Processing file ${i + 1} of ${files.length}: ${file.name}`);
+        
+        // Process file with our new method
         const outputBlob = await addWatermark(
-          ffmpeg,
           file,
           watermarkVolume,
           watermarkInterval
@@ -185,14 +150,6 @@ const AudioWatermarker: React.FC = () => {
     }
   }, [toast]);
 
-  // Attempt to initialize FFmpeg when component mounts
-  useEffect(() => {
-    console.log("Component mounted, attempting to initialize FFmpeg");
-    initFFmpeg().catch(error => {
-      console.error("Auto-initialization failed:", error);
-    });
-  }, [initFFmpeg]);
-
   return (
     <div className="container mx-auto py-8 max-w-4xl">
       <div className="space-y-8">
@@ -204,38 +161,6 @@ const AudioWatermarker: React.FC = () => {
         </div>
 
         <Separator className="my-6" />
-
-        {!isInitialized && (
-          <Card className={`${initError ? "bg-red-50 border-red-200" : "bg-yellow-50 border-yellow-200"}`}>
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center justify-center space-y-4">
-                <p className={initError ? "text-red-800" : "text-amber-800"}>
-                  {initError 
-                    ? `FFmpeg initialization failed: ${initError}` 
-                    : "Audio processing engine needs to be initialized"}
-                </p>
-                <Button 
-                  onClick={initFFmpeg}
-                  disabled={isInitializing}
-                  variant="default"
-                  className="flex gap-2"
-                >
-                  {isInitializing ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                      <span>Initializing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4" />
-                      <span>Initialize Audio Engine</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Dropzone */}
         <Card>
@@ -260,9 +185,7 @@ const AudioWatermarker: React.FC = () => {
                 <AudioLines className="h-12 w-12 text-muted-foreground" />
                 <div>
                   <p className="text-lg font-medium">
-                    {isInitializing
-                      ? "Initializing audio engine..."
-                      : "Drop your audio files here"}
+                    Drop your audio files here
                   </p>
                   <p className="text-sm text-muted-foreground">
                     Supports MP3, WAV, and other audio formats
@@ -276,7 +199,7 @@ const AudioWatermarker: React.FC = () => {
                   accept="audio/*"
                   className="hidden"
                   onChange={handleFileSelect}
-                  disabled={!isInitialized || isProcessing}
+                  disabled={isProcessing}
                 />
               </div>
             </div>
@@ -285,7 +208,7 @@ const AudioWatermarker: React.FC = () => {
             <div className="mt-4 flex justify-center">
               <Button 
                 onClick={handleBrowseClick}
-                disabled={!isInitialized || isProcessing}
+                disabled={isProcessing}
                 variant="outline"
                 className="gap-2"
               >
@@ -375,7 +298,7 @@ const AudioWatermarker: React.FC = () => {
             <Button 
               className="w-full"
               onClick={processFiles}
-              disabled={!isInitialized || isProcessing || files.length === 0}
+              disabled={isProcessing || files.length === 0}
             >
               {isProcessing
                 ? "Processing..."
