@@ -61,16 +61,114 @@ export const audioBufferToCompressedFormat = (buffer: AudioBuffer, options: {
   return encodeWAV(processedBuffer, bitDepth);
 };
 
-// Add the missing audioBufferToMp3 function
-export const audioBufferToMp3 = (buffer: AudioBuffer): Uint8Array => {
+// Improved MP3 compression using lamejs
+export const audioBufferToMp3 = (buffer: AudioBuffer, options: {
+  bitRate?: number,
+  quality?: 'low' | 'medium' | 'high'
+} = {}): Uint8Array => {
   console.log("Converting audio buffer to MP3 format");
   
-  // For now, this will use WAV compression as a fallback
-  // since we're having issues with the lamejs implementation
-  const quality = buffer.length > 1000000 ? 'medium' : 'high';
-  console.log(`Using ${quality} quality compression for MP3 fallback`);
-  
-  return audioBufferToCompressedFormat(buffer, { quality });
+  try {
+    // Import lamejs as an ES module
+    const lamejs = require('lamejs');
+    
+    // Determine MP3 settings based on quality
+    let quality = options.quality || 'medium';
+    let bitRate = options.bitRate;
+    
+    if (!bitRate) {
+      // Set bitRate based on quality if not explicitly provided
+      if (quality === 'low') {
+        bitRate = 64;
+      } else if (quality === 'medium') {
+        bitRate = 128;
+      } else {
+        bitRate = 192; // high quality
+      }
+    }
+    
+    console.log(`MP3 compression settings: ${bitRate}kbps`);
+    
+    // Prepare the audio data
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    
+    // MP3 encoder works with stereo or mono
+    const mp3encoder = new lamejs.Mp3Encoder(
+      numChannels > 1 ? 2 : 1,  // Stereo or Mono
+      sampleRate,
+      bitRate
+    );
+    
+    const bufferSize = 1152; // This is a recommended buffer size for MP3 encoding
+    const mp3Data = [];
+    
+    // Extract and prepare channel data
+    let leftChannel, rightChannel;
+    
+    if (numChannels > 0) leftChannel = buffer.getChannelData(0);
+    if (numChannels > 1) rightChannel = buffer.getChannelData(1);
+    
+    // Process the audio data in chunks
+    for (let i = 0; i < buffer.length; i += bufferSize) {
+      // Create sample arrays for each chunk
+      const leftChunk = new Int16Array(Math.min(bufferSize, buffer.length - i));
+      const rightChunk = numChannels > 1 ? new Int16Array(Math.min(bufferSize, buffer.length - i)) : null;
+      
+      // Convert float32 to int16
+      for (let j = 0; j < leftChunk.length; j++) {
+        if (i + j < buffer.length) {
+          // Convert from [-1.0, 1.0] to [-32768, 32767]
+          const leftSample = Math.max(-1, Math.min(1, leftChannel[i + j]));
+          leftChunk[j] = leftSample < 0 ? leftSample * 0x8000 : leftSample * 0x7FFF;
+          
+          if (rightChunk && numChannels > 1) {
+            const rightSample = Math.max(-1, Math.min(1, rightChannel[i + j]));
+            rightChunk[j] = rightSample < 0 ? rightSample * 0x8000 : rightSample * 0x7FFF;
+          }
+        }
+      }
+      
+      // Encode the chunk
+      let mp3buf;
+      if (numChannels > 1) {
+        mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+      } else {
+        mp3buf = mp3encoder.encodeBuffer(leftChunk);
+      }
+      
+      if (mp3buf.length > 0) {
+        mp3Data.push(mp3buf);
+      }
+    }
+    
+    // Finalize the MP3
+    const finalizeBuf = mp3encoder.flush();
+    if (finalizeBuf.length > 0) {
+      mp3Data.push(finalizeBuf);
+    }
+    
+    // Calculate the total size and create the final buffer
+    const totalSize = mp3Data.reduce((acc, buf) => acc + buf.length, 0);
+    const result = new Uint8Array(totalSize);
+    
+    let offset = 0;
+    for (const buf of mp3Data) {
+      result.set(buf, offset);
+      offset += buf.length;
+    }
+    
+    console.log(`MP3 compression successful, output size: ${result.length} bytes`);
+    return result;
+    
+  } catch (error) {
+    console.error("Error during MP3 compression:", error);
+    console.log("Falling back to WAV compression");
+    
+    // If MP3 compression fails, fall back to WAV compression
+    const fallbackQuality = options.quality || 'medium';
+    return audioBufferToCompressedFormat(buffer, { quality: fallbackQuality });
+  }
 };
 
 // Resample an AudioBuffer to a different sample rate
