@@ -126,7 +126,7 @@ export const audioBufferToCompressedFormat = (buffer: AudioBuffer, options: {
     const reductionRatio = maxSizeInMB / currentSizeMB * 0.95; // 5% safety margin
     const newLength = Math.floor(processedBuffer.length * reductionRatio);
     
-    console.log(`Truncating audio to ${reductionRatio.toFixed(2) * 100}% of current length`);
+    console.log(`Truncating audio to ${(reductionRatio * 100).toFixed(2)}% of current length`);
     
     // Create a truncated buffer
     const truncatedBuffer = new AudioContext().createBuffer(
