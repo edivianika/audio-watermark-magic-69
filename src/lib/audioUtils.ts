@@ -1,9 +1,8 @@
-
 /**
  * Main module for audio processing utilities
  */
 
-import { audioBufferToCompressedFormat, loadAudioFile, reduceToMono } from "./audioProcessing";
+import { loadAudioFile } from "./audioProcessing";
 import { fetchWatermarkAudio } from "./audioWatermark";
 
 // Re-export for compatibility
@@ -11,7 +10,7 @@ export * from "./audioFileConversion";
 export * from "./audioWatermark";
 export * from "./audioProcessing";
 
-// Add watermark to audio with compression
+// Add watermark to audio without compression
 export const addWatermark = async (
   inputFile: File,
   watermarkVolume: number,
@@ -36,47 +35,26 @@ export const addWatermark = async (
     const watermarkBuffer = await loadAudioFile(audioContext, watermarkFile);
     console.log("Watermark audio loaded successfully, duration:", watermarkBuffer.duration);
     
-    // Determine file size-based compression settings
     const fileSizeMB = inputFile.size / (1024 * 1024);
     console.log(`Original file size: ${fileSizeMB.toFixed(2)} MB`);
     
-    // Maximum final size in MB - enforce 16MB limit
-    const maxSizeInMB = 16;
-    
-    // Adaptive compression settings based on file size
-    let quality: 'low' | 'medium' | 'high' = 'high';
-    let convertToMono = false;
-    
-    if (fileSizeMB > 30) {
-      quality = 'low';
-      convertToMono = true;
-    } else if (fileSizeMB > 20) {
-      quality = 'medium';
-      convertToMono = true;
-    } else if (fileSizeMB > 10) {
-      quality = 'medium';
-    }
-    
-    console.log(`Compression settings: ${quality} quality, mono: ${convertToMono}, max size: ${maxSizeInMB}MB`);
-    
-    // Convert to mono if needed for size reduction
-    const effectiveInputBuffer = convertToMono ? reduceToMono(inputBuffer) : inputBuffer;
-    const inputDuration = effectiveInputBuffer.duration;
-    const numChannels = effectiveInputBuffer.numberOfChannels;
+    // No compression or conversion to mono - keep original format
+    const numChannels = inputBuffer.numberOfChannels;
+    const inputDuration = inputBuffer.duration;
     
     console.log(`Input duration: ${inputDuration}s, Channels: ${numChannels}`);
     
-    // Create output buffer
+    // Create output buffer with same specs as input
     const outputBuffer = audioContext.createBuffer(
       numChannels,
-      effectiveInputBuffer.length,
-      effectiveInputBuffer.sampleRate
+      inputBuffer.length,
+      inputBuffer.sampleRate
     );
     
     // First, copy the original audio to the output buffer
     for (let channel = 0; channel < numChannels; channel++) {
       const outputData = outputBuffer.getChannelData(channel);
-      outputData.set(effectiveInputBuffer.getChannelData(channel));
+      outputData.set(inputBuffer.getChannelData(channel));
     }
     
     // Now add watermarks at intervals
@@ -114,26 +92,15 @@ export const addWatermark = async (
       }
     }
     
-    // Convert to compressed format with quality settings and size limitation
-    const compressedData = audioBufferToCompressedFormat(outputBuffer, { 
-      quality,
-      maxSizeInMB
-    });
+    // Convert AudioBuffer to raw audio data without compression
+    const rawAudioData = audioBufferToRawFormat(outputBuffer);
     
-    // Determine output MIME type
-    const mimeType = "audio/wav";
+    // Determine output MIME type based on input file
+    const mimeType = inputFile.type || "audio/wav";
     
-    const finalSizeMB = compressedData.length / (1024 * 1024);
-    const compressionRatio = inputFile.size / compressedData.length;
-    console.log(`Audio watermarking completed with compression. Output size: ${finalSizeMB.toFixed(2)} MB`);
-    console.log(`Compression ratio: ${compressionRatio.toFixed(2)}x`);
+    console.log(`Audio watermarking completed without compression. Using format: ${mimeType}`);
     
-    // Final check to ensure we're within limits
-    if (finalSizeMB > maxSizeInMB) {
-      console.warn(`Warning: Final size (${finalSizeMB.toFixed(2)}MB) exceeds target (${maxSizeInMB}MB) despite compression efforts`);
-    }
-    
-    return new Blob([compressedData], { 
+    return new Blob([rawAudioData], { 
       type: mimeType
     });
   } catch (error) {
@@ -158,7 +125,6 @@ export const processBatch = async (
   progressCallback: (current: number, total: number) => void
 ): Promise<{name: string, url: string}[]> => {
   const results = [];
-  const maxSizeInMB = 16; // Enforce 16MB limit
   
   for (let i = 0; i < files.length; i++) {
     try {
@@ -175,14 +141,10 @@ export const processBatch = async (
       
       // Get the final size after processing
       const finalSizeMB = outputBlob.size / (1024 * 1024);
-      console.log(`Final output size: ${finalSizeMB.toFixed(2)}MB (target: ${maxSizeInMB}MB)`);
-      
-      if (finalSizeMB > maxSizeInMB) {
-        console.warn(`Warning: File ${file.name} compressed to ${finalSizeMB.toFixed(2)}MB, still above ${maxSizeInMB}MB limit`);
-      }
+      console.log(`Final output size: ${finalSizeMB.toFixed(2)}MB`);
       
       const originalName = file.name;
-      const extension = 'wav'; // Use WAV for our compressed output
+      const extension = originalName.split('.').pop();
       const nameWithoutExt = originalName.slice(0, originalName.lastIndexOf('.'));
       const outputFilename = `${nameWithoutExt}_Watermarked.${extension}`;
       
@@ -201,4 +163,70 @@ export const processBatch = async (
   progressCallback(files.length, files.length);
   
   return results;
+};
+
+// Convert AudioBuffer to raw audio format without compression
+const audioBufferToRawFormat = (buffer: AudioBuffer): Uint8Array => {
+  const numChannels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const bitDepth = 16; // Use 16-bit for good quality
+  const bytesPerSample = bitDepth / 8;
+  const blockAlign = numChannels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataLength = buffer.length * numChannels * bytesPerSample;
+  
+  // WAV header is 44 bytes
+  const arrayBuffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(arrayBuffer);
+  
+  // Write WAV header
+  // "RIFF" chunk descriptor
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(view, 8, 'WAVE');
+  
+  // "fmt " sub-chunk
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true); // subchunk1 size (16 for PCM)
+  view.setUint16(20, 1, true); // audio format (1 for PCM)
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitDepth, true);
+  
+  // "data" sub-chunk
+  writeString(view, 36, 'data');
+  view.setUint32(40, dataLength, true);
+  
+  // Write the PCM samples
+  const channels = [];
+  for (let i = 0; i < numChannels; i++) {
+    channels.push(buffer.getChannelData(i));
+  }
+  
+  let offset = 44;
+  let sample;
+  
+  // Interleave channels
+  for (let i = 0; i < buffer.length; i++) {
+    for (let channel = 0; channel < numChannels; channel++) {
+      // Convert float32 to the appropriate integer based on bit depth
+      sample = Math.max(-1, Math.min(1, channels[channel][i]));
+      
+      // 16-bit WAV is signed
+      sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      view.setInt16(offset, sample, true);
+      offset += 2;
+    }
+  }
+  
+  return new Uint8Array(arrayBuffer);
+};
+
+// Helper function to write a string to a DataView
+const writeString = (view: DataView, offset: number, string: string) => {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
 };
