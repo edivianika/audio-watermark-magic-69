@@ -7,18 +7,20 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { AudioWaveform, AudioLines, Upload } from "lucide-react";
+import { AudioWaveform, AudioLines, Upload, ChevronDown, ChevronUp, Settings } from "lucide-react";
 import { addWatermark, generateUniqueFilename } from "@/lib/audioUtils";
 import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const AudioWatermarker: React.FC = () => {
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [watermarkVolume, setWatermarkVolume] = useState(0.75); // Updated to 75%
-  const [watermarkInterval, setWatermarkInterval] = useState(5); // Updated to 5 seconds
+  const [watermarkVolume, setWatermarkVolume] = useState(0.75); // 75% volume
+  const [watermarkInterval, setWatermarkInterval] = useState(10); // Updated to 10 seconds default
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false); // Default hide settings
   const dropzoneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -156,6 +158,11 @@ const AudioWatermarker: React.FC = () => {
     }
   }, [toast]);
 
+  // Toggle settings visibility
+  const toggleSettings = () => {
+    setShowSettings(!showSettings);
+  };
+
   return (
     <div className="container mx-auto py-8 max-w-4xl">
       <div className="space-y-8">
@@ -246,51 +253,71 @@ const AudioWatermarker: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Controls */}
+        {/* Controls - Now with Collapsible */}
         <Card>
-          <CardHeader>
-            <CardTitle>Watermark Settings</CardTitle>
+          <CardHeader className="pb-3">
+            <div className="flex justify-between items-center">
+              <CardTitle>Watermark Settings</CardTitle>
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                onClick={toggleSettings} 
+                className="h-8 gap-1"
+              >
+                <Settings className="h-4 w-4" />
+                {showSettings ? 
+                  <span className="flex items-center">Hide Settings <ChevronUp className="ml-1 h-4 w-4" /></span> : 
+                  <span className="flex items-center">Show Settings <ChevronDown className="ml-1 h-4 w-4" /></span>
+                }
+              </Button>
+            </div>
             <CardDescription>
-              Adjust the watermark volume and placement interval
+              Customize how the watermark appears in your audio
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label htmlFor="watermark-volume">Watermark Volume: {(watermarkVolume * 100).toFixed(0)}%</Label>
-              </div>
-              <Slider
-                id="watermark-volume"
-                min={0.1}
-                max={1}
-                step={0.05}
-                value={[watermarkVolume]}
-                onValueChange={(value) => setWatermarkVolume(value[0])}
-                disabled={isProcessing}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Adjust how loud the watermark will be in the final audio
-              </p>
-            </div>
+          
+          <Collapsible open={showSettings} onOpenChange={setShowSettings}>
+            <CollapsibleContent>
+              <CardContent className="space-y-6 pt-0">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="watermark-volume">Watermark Volume: {(watermarkVolume * 100).toFixed(0)}%</Label>
+                  </div>
+                  <Slider
+                    id="watermark-volume"
+                    min={0.1}
+                    max={1}
+                    step={0.05}
+                    value={[watermarkVolume]}
+                    onValueChange={(value) => setWatermarkVolume(value[0])}
+                    disabled={isProcessing}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Adjust how loud the watermark will be in the final audio
+                  </p>
+                </div>
 
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label htmlFor="watermark-interval">Interval: {watermarkInterval} seconds</Label>
-              </div>
-              <Slider
-                id="watermark-interval"
-                min={5}
-                max={60}
-                step={1}
-                value={[watermarkInterval]}
-                onValueChange={(value) => setWatermarkInterval(value[0])}
-                disabled={isProcessing}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Set how often the watermark appears in the audio
-              </p>
-            </div>
-          </CardContent>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="watermark-interval">Interval: {watermarkInterval} seconds</Label>
+                  </div>
+                  <Slider
+                    id="watermark-interval"
+                    min={5}
+                    max={60}
+                    step={1}
+                    value={[watermarkInterval]}
+                    onValueChange={(value) => setWatermarkInterval(value[0])}
+                    disabled={isProcessing}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Set how often the watermark appears in the audio
+                  </p>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+          
           <CardFooter className="flex flex-col space-y-4">
             {isProcessing && (
               <div className="w-full space-y-2">
