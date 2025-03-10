@@ -59,11 +59,8 @@ const AudioWatermarker: React.FC = () => {
         
         // Store processed files for download with size information
         const filesWithSize = results.map(file => {
-          const blob = fetch(file.url).then(r => r.blob());
-          const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
           return {
             ...file,
-            size: `${sizeMB} MB`,
             isPlaying: false
           };
         });
