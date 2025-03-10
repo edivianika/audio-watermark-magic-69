@@ -1,4 +1,3 @@
-
 /**
  * Core audio functions
  */
@@ -147,6 +146,66 @@ export const encodeWAV = (buffer: AudioBuffer, bitDepth: number = 16): Uint8Arra
   }
   
   return new Uint8Array(arrayBuffer);
+};
+
+// Apply audio compression to AudioBuffer using Web Audio API's DynamicsCompressorNode
+export const applyCompression = async (buffer: AudioBuffer, options: {
+  threshold: number;  // dB, typical range: -100 to 0
+  knee: number;       // dB, typical range: 0 to 40
+  ratio: number;      // compression ratio, typical range: 1 to 20
+  attack: number;     // seconds, typical range: 0 to 1
+  release: number;    // seconds, typical range: 0 to 1
+} = {}): Promise<AudioBuffer> => {
+  console.log('Applying audio compression with settings:', options);
+  
+  // Create a new audio context
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  
+  // Create source buffer
+  const sourceNode = audioContext.createBufferSource();
+  sourceNode.buffer = buffer;
+  
+  // Create dynamics compressor
+  const compressor = audioContext.createDynamicsCompressor();
+  
+  // Apply compression settings
+  compressor.threshold.value = options.threshold ?? -24;  // Default: -24 dB
+  compressor.knee.value = options.knee ?? 30;            // Default: 30 dB
+  compressor.ratio.value = options.ratio ?? 12;          // Default: 12:1 ratio
+  compressor.attack.value = options.attack ?? 0.003;     // Default: 3ms
+  compressor.release.value = options.release ?? 0.25;    // Default: 250ms
+  
+  // Create offline audio context to render the processed audio
+  const offlineContext = new OfflineAudioContext(
+    buffer.numberOfChannels,
+    buffer.length,
+    buffer.sampleRate
+  );
+  
+  // Create source and compressor in the offline context
+  const offlineSource = offlineContext.createBufferSource();
+  offlineSource.buffer = buffer;
+  
+  const offlineCompressor = offlineContext.createDynamicsCompressor();
+  offlineCompressor.threshold.value = compressor.threshold.value;
+  offlineCompressor.knee.value = compressor.knee.value;
+  offlineCompressor.ratio.value = compressor.ratio.value;
+  offlineCompressor.attack.value = compressor.attack.value;
+  offlineCompressor.release.value = compressor.release.value;
+  
+  // Connect nodes
+  offlineSource.connect(offlineCompressor);
+  offlineCompressor.connect(offlineContext.destination);
+  
+  // Start the source
+  offlineSource.start(0);
+  
+  // Render the audio
+  console.log('Rendering compressed audio...');
+  const renderedBuffer = await offlineContext.startRendering();
+  console.log('Audio compression complete');
+  
+  return renderedBuffer;
 };
 
 // Convert AudioBuffer to WAV format with quality reduction and size control

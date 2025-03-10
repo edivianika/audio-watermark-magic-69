@@ -13,12 +13,20 @@ export const generateUniqueFilename = (originalName: string): string => {
   return `watermarked_${timestamp}_${randomString}.${extension}`;
 };
 
-// Process multiple files with a watermark
+// Process multiple files with a watermark and optional compression
 export const processBatch = async (
   files: File[],
   watermarkVolume: number,
   watermarkInterval: number,
-  progressCallback: (current: number, total: number) => void
+  progressCallback: (current: number, total: number) => void,
+  compressionOptions?: {
+    enabled: boolean;
+    threshold?: number;
+    knee?: number;
+    ratio?: number;
+    attack?: number;
+    release?: number;
+  }
 ): Promise<{name: string, url: string, size: string}[]> => {
   const results = [];
   
@@ -32,7 +40,8 @@ export const processBatch = async (
       const outputBlob = await addWatermark(
         file,
         watermarkVolume,
-        watermarkInterval
+        watermarkInterval,
+        compressionOptions
       );
       
       // Get the final size after processing
@@ -42,7 +51,7 @@ export const processBatch = async (
       const originalName = file.name;
       const extension = originalName.split('.').pop();
       const nameWithoutExt = originalName.slice(0, originalName.lastIndexOf('.'));
-      const outputFilename = `${nameWithoutExt}_Watermarked.${extension}`;
+      const outputFilename = `${nameWithoutExt}_Watermarked${compressionOptions?.enabled ? '_Compressed' : ''}.${extension}`;
       
       const url = URL.createObjectURL(outputBlob);
       

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -6,12 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { AudioWaveform, AudioLines, Upload, ChevronDown, ChevronUp, Settings, FileText, Check, Download, Play, Pause } from "lucide-react";
+import { 
+  AudioWaveform, AudioLines, Upload, ChevronDown, ChevronUp, 
+  Settings, FileText, Check, Download, Play, Pause, Wand2
+} from "lucide-react";
 import { addWatermark, generateUniqueFilename, processBatch } from "@/lib/audioUtils";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const AudioWatermarker: React.FC = () => {
   const { toast } = useToast();
@@ -28,6 +33,15 @@ const AudioWatermarker: React.FC = () => {
   const [useBatchMode, setUseBatchMode] = useState(true); // Enable batch mode by default
   const [processedFiles, setProcessedFiles] = useState<{name: string, url: string, size: string, isPlaying: boolean}[]>([]);
   const audioRefs = useRef<{[key: string]: HTMLAudioElement}>({});
+  
+  // Compression settings
+  const [compressionEnabled, setCompressionEnabled] = useState(false);
+  const [compressionThreshold, setCompressionThreshold] = useState(-24);
+  const [compressionRatio, setCompressionRatio] = useState(4);
+  const [compressionKnee, setCompressionKnee] = useState(30);
+  const [compressionAttack, setCompressionAttack] = useState(0.003);
+  const [compressionRelease, setCompressionRelease] = useState(0.25);
+  const [settingsTab, setSettingsTab] = useState("watermark");
 
   // Process files with watermark
   const processFiles = async () => {
@@ -43,6 +57,16 @@ const AudioWatermarker: React.FC = () => {
     setIsProcessing(true);
     setProgress(0);
     setProcessedFiles([]);
+    
+    // Prepare compression options
+    const compressionOptions = compressionEnabled ? {
+      enabled: true,
+      threshold: compressionThreshold,
+      knee: compressionKnee,
+      ratio: compressionRatio,
+      attack: compressionAttack,
+      release: compressionRelease
+    } : { enabled: false };
 
     try {
       if (useBatchMode) {
@@ -54,7 +78,8 @@ const AudioWatermarker: React.FC = () => {
           (current, total) => {
             const currentProgress = Math.round(((current) / total) * 100);
             setProgress(currentProgress);
-          }
+          },
+          compressionOptions
         );
         
         // Store processed files for download with size information
@@ -69,10 +94,10 @@ const AudioWatermarker: React.FC = () => {
         
         toast({
           title: "Batch Processing Complete",
-          description: `Successfully processed ${results.length} file(s) with watermark`,
+          description: `Successfully processed ${results.length} file(s) with watermark${compressionEnabled ? ' and compression' : ''}`,
         });
       } else {
-        // Process files one by one with immediate download (old behavior)
+        // Process files one by one with immediate download
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
           const currentProgress = Math.round(((i) / files.length) * 100);
@@ -85,7 +110,8 @@ const AudioWatermarker: React.FC = () => {
           const outputBlob = await addWatermark(
             file,
             watermarkVolume,
-            watermarkInterval
+            watermarkInterval,
+            compressionOptions
           );
 
           const compressedSize = (outputBlob.size / 1024 / 1024).toFixed(2);
@@ -93,13 +119,13 @@ const AudioWatermarker: React.FC = () => {
           console.log(`Compression: ${originalSize}MB → ${compressedSize}MB (${compressionRatio}x)`);
           
           // Update file size info for display
-          setFileSize(`Original: ${originalSize}MB, Compressed: ${compressedSize}MB, Ratio: ${compressionRatio}x`);
+          setFileSize(`Original: ${originalSize}MB, Processed: ${compressedSize}MB, Ratio: ${compressionRatio}x`);
 
           // Generate the trial filename
           const originalName = file.name;
           const extension = originalName.split('.').pop();
           const nameWithoutExt = originalName.slice(0, -(extension?.length || 0) - 1);
-          const trialFilename = `${nameWithoutExt}_Trial.${extension}`;
+          const trialFilename = `${nameWithoutExt}_Processed${compressionEnabled ? '_Compressed' : ''}.${extension}`;
 
           // Create download link
           const url = URL.createObjectURL(outputBlob);
@@ -114,7 +140,7 @@ const AudioWatermarker: React.FC = () => {
         
         toast({
           title: "Processing Complete",
-          description: `Successfully processed ${files.length} file(s) with watermark`,
+          description: `Successfully processed ${files.length} file(s)`,
         });
       }
 
@@ -311,7 +337,7 @@ const AudioWatermarker: React.FC = () => {
         <div className="text-center">
           <h1 className="text-4xl font-bold tracking-tight mt-6 mb-2">Audio Watermark Magic</h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Add watermarks to your audio files with precise control over placement
+            Add watermarks to your audio files with precise control over placement and compression
           </p>
         </div>
 
@@ -469,11 +495,11 @@ const AudioWatermarker: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Controls - Now with Collapsible */}
+        {/* Controls - Now with Tabs for Settings */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex justify-between items-center">
-              <CardTitle>Watermark Settings</CardTitle>
+              <CardTitle>Processing Settings</CardTitle>
               <Button 
                 size="sm" 
                 variant="ghost" 
@@ -488,30 +514,156 @@ const AudioWatermarker: React.FC = () => {
               </Button>
             </div>
             <CardDescription>
-              Customize how the watermark appears in your audio
+              Customize watermark and compression settings for your audio
             </CardDescription>
           </CardHeader>
           
           <Collapsible open={showSettings} onOpenChange={setShowSettings}>
             <CollapsibleContent>
               <CardContent className="space-y-6 pt-0">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <Label htmlFor="watermark-interval">Interval: {watermarkInterval} seconds</Label>
-                  </div>
-                  <Slider
-                    id="watermark-interval"
-                    min={5}
-                    max={60}
-                    step={1}
-                    value={[watermarkInterval]}
-                    onValueChange={(value) => setWatermarkInterval(value[0])}
-                    disabled={isProcessing}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Set how often the watermark appears in the audio
-                  </p>
-                </div>
+                <Tabs defaultValue="watermark" value={settingsTab} onValueChange={setSettingsTab}>
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="watermark">Watermark</TabsTrigger>
+                    <TabsTrigger value="compression">Compression</TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="watermark" className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label htmlFor="watermark-interval">Interval: {watermarkInterval} seconds</Label>
+                      </div>
+                      <Slider
+                        id="watermark-interval"
+                        min={5}
+                        max={60}
+                        step={1}
+                        value={[watermarkInterval]}
+                        onValueChange={(value) => setWatermarkInterval(value[0])}
+                        disabled={isProcessing}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Set how often the watermark appears in the audio
+                      </p>
+                    </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="compression" className="space-y-4 pt-4">
+                    <div className="flex items-center space-x-2 mb-4">
+                      <Switch
+                        id="compression-toggle"
+                        checked={compressionEnabled}
+                        onCheckedChange={setCompressionEnabled}
+                        disabled={isProcessing}
+                      />
+                      <Label htmlFor="compression-toggle" className="font-medium">Enable Audio Compression</Label>
+                    </div>
+                    
+                    {compressionEnabled && (
+                      <div className="space-y-6 pt-2">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <Label htmlFor="compression-threshold">Threshold: {compressionThreshold} dB</Label>
+                          </div>
+                          <Slider
+                            id="compression-threshold"
+                            min={-60}
+                            max={0}
+                            step={1}
+                            value={[compressionThreshold]}
+                            onValueChange={(value) => setCompressionThreshold(value[0])}
+                            disabled={isProcessing}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Level at which compression starts to be applied
+                          </p>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <Label htmlFor="compression-ratio">Ratio: {compressionRatio}:1</Label>
+                          </div>
+                          <Slider
+                            id="compression-ratio"
+                            min={1}
+                            max={20}
+                            step={0.5}
+                            value={[compressionRatio]}
+                            onValueChange={(value) => setCompressionRatio(value[0])}
+                            disabled={isProcessing}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Amount of compression applied (higher = more compression)
+                          </p>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <Label htmlFor="compression-knee">Knee: {compressionKnee} dB</Label>
+                          </div>
+                          <Slider
+                            id="compression-knee"
+                            min={0}
+                            max={40}
+                            step={1}
+                            value={[compressionKnee]}
+                            onValueChange={(value) => setCompressionKnee(value[0])}
+                            disabled={isProcessing}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Smoothness of the compression curve
+                          </p>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="compression-attack">Attack: {(compressionAttack * 1000).toFixed(0)} ms</Label>
+                            <Slider
+                              id="compression-attack"
+                              min={0.001}
+                              max={0.5}
+                              step={0.001}
+                              value={[compressionAttack]}
+                              onValueChange={(value) => setCompressionAttack(value[0])}
+                              disabled={isProcessing}
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="compression-release">Release: {(compressionRelease * 1000).toFixed(0)} ms</Label>
+                            <Slider
+                              id="compression-release"
+                              min={0.01}
+                              max={1}
+                              step={0.01}
+                              value={[compressionRelease]}
+                              onValueChange={(value) => setCompressionRelease(value[0])}
+                              disabled={isProcessing}
+                            />
+                          </div>
+                        </div>
+                        
+                        <Button 
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2"
+                          onClick={() => {
+                            setCompressionThreshold(-24);
+                            setCompressionRatio(4);
+                            setCompressionKnee(30);
+                            setCompressionAttack(0.003);
+                            setCompressionRelease(0.25);
+                          }}
+                          disabled={isProcessing}
+                        >
+                          <Wand2 className="h-4 w-4" />
+                          Reset to Default Values
+                        </Button>
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
+                
+                <Separator />
                 
                 <div className="flex items-center space-x-2">
                   <Switch
@@ -551,7 +703,7 @@ const AudioWatermarker: React.FC = () => {
                 ? "Processing..."
                 : useBatchMode
                   ? "Process All Files"
-                  : "Add Watermark & Download"}
+                  : `Add Watermark${compressionEnabled ? ' & Compress' : ''} + Download`}
             </Button>
           </CardFooter>
         </Card>

@@ -1,8 +1,9 @@
+
 /**
  * Main module for audio processing utilities
  */
 
-import { loadAudioFile } from "./audioCore";
+import { loadAudioFile, applyCompression } from "./audioCore";
 import { fetchWatermarkAudio } from "./watermarkService";
 import { audioBufferToRawFormat } from "./formatConversion";
 
@@ -12,15 +13,26 @@ export * from "./watermarkService";
 export * from "./audioCore";
 export * from "./batchProcessing";
 
-// Add watermark to audio without compression
+// Add watermark to audio with optional compression
 export const addWatermark = async (
   inputFile: File,
   watermarkVolume: number,
-  watermarkInterval: number
+  watermarkInterval: number,
+  compressionOptions?: {
+    enabled: boolean;
+    threshold?: number;
+    knee?: number;
+    ratio?: number;
+    attack?: number;
+    release?: number;
+  }
 ): Promise<Blob> => {
   try {
     console.log("Starting audio watermarking process with database watermark file");
     console.log(`Watermark settings: Volume=${watermarkVolume}, Interval=${watermarkInterval}s`);
+    if (compressionOptions?.enabled) {
+      console.log("Compression enabled:", compressionOptions);
+    }
     
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     
@@ -96,19 +108,33 @@ export const addWatermark = async (
       }
     }
     
+    // Apply compression if enabled
+    let finalBuffer = outputBuffer;
+    if (compressionOptions?.enabled) {
+      console.log("Applying audio compression...");
+      finalBuffer = await applyCompression(outputBuffer, {
+        threshold: compressionOptions.threshold,
+        knee: compressionOptions.knee,
+        ratio: compressionOptions.ratio,
+        attack: compressionOptions.attack,
+        release: compressionOptions.release
+      });
+      console.log("Compression applied successfully");
+    }
+    
     // Convert AudioBuffer to raw audio data without compression
-    const rawAudioData = audioBufferToRawFormat(outputBuffer);
+    const rawAudioData = audioBufferToRawFormat(finalBuffer);
     
     // Determine output MIME type based on input file
     const mimeType = inputFile.type || "audio/wav";
     
-    console.log(`Audio watermarking completed without compression. Using format: ${mimeType}`);
+    console.log(`Audio processing completed. Using format: ${mimeType}`);
     
     return new Blob([rawAudioData], { 
       type: mimeType
     });
   } catch (error) {
-    console.error("Error adding watermark:", error);
+    console.error("Error processing audio:", error);
     throw error;
   }
 };
