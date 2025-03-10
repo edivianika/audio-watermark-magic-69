@@ -2,13 +2,15 @@
  * Main module for audio processing utilities
  */
 
-import { loadAudioFile } from "./audioProcessing";
-import { fetchWatermarkAudio } from "./audioWatermark";
+import { loadAudioFile } from "./audioCore";
+import { fetchWatermarkAudio } from "./watermarkService";
+import { audioBufferToRawFormat } from "./formatConversion";
 
 // Re-export for compatibility
-export * from "./audioFileConversion";
-export * from "./audioWatermark";
-export * from "./audioProcessing";
+export * from "./formatConversion";
+export * from "./watermarkService";
+export * from "./audioCore";
+export * from "./batchProcessing";
 
 // Add watermark to audio without compression
 export const addWatermark = async (
