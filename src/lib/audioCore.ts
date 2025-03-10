@@ -150,11 +150,11 @@ export const encodeWAV = (buffer: AudioBuffer, bitDepth: number = 16): Uint8Arra
 
 // Apply audio compression to AudioBuffer using Web Audio API's DynamicsCompressorNode
 export const applyCompression = async (buffer: AudioBuffer, options: {
-  threshold: number;  // dB, typical range: -100 to 0
-  knee: number;       // dB, typical range: 0 to 40
-  ratio: number;      // compression ratio, typical range: 1 to 20
-  attack: number;     // seconds, typical range: 0 to 1
-  release: number;    // seconds, typical range: 0 to 1
+  threshold?: number;  // dB, typical range: -100 to 0
+  knee?: number;       // dB, typical range: 0 to 40
+  ratio?: number;      // compression ratio, typical range: 1 to 20
+  attack?: number;     // seconds, typical range: 0 to 1
+  release?: number;    // seconds, typical range: 0 to 1
 } = {}): Promise<AudioBuffer> => {
   console.log('Applying audio compression with settings:', options);
   
