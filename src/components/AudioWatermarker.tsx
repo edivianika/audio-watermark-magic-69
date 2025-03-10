@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -7,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { AudioWaveform, AudioLines, Upload, ChevronDown, ChevronUp, Settings, FileText, Check, Download } from "lucide-react";
+import { AudioWaveform, AudioLines, Upload, ChevronDown, ChevronUp, Settings, FileText, Check, Download, Play, Pause } from "lucide-react";
 import { addWatermark, generateUniqueFilename, processBatch } from "@/lib/audioUtils";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -18,7 +17,7 @@ const AudioWatermarker: React.FC = () => {
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [watermarkVolume, setWatermarkVolume] = useState(1.0); // 100% volume by default
+  const [watermarkVolume, setWatermarkVolume] = useState(0.9); // Set to 90% volume by default
   const [watermarkInterval, setWatermarkInterval] = useState(10); // 10 seconds default
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -27,7 +26,8 @@ const AudioWatermarker: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileSize, setFileSize] = useState<string | null>(null);
   const [useBatchMode, setUseBatchMode] = useState(true); // Enable batch mode by default
-  const [processedFiles, setProcessedFiles] = useState<{name: string, url: string}[]>([]);
+  const [processedFiles, setProcessedFiles] = useState<{name: string, url: string, size: string, isPlaying: boolean}[]>([]);
+  const audioRefs = useRef<{[key: string]: HTMLAudioElement}>({});
 
   // Process files with watermark
   const processFiles = async () => {
@@ -57,8 +57,18 @@ const AudioWatermarker: React.FC = () => {
           }
         );
         
-        // Store processed files for download
-        setProcessedFiles(results);
+        // Store processed files for download with size information
+        const filesWithSize = results.map(file => {
+          const blob = fetch(file.url).then(r => r.blob());
+          const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+          return {
+            ...file,
+            size: `${sizeMB} MB`,
+            isPlaying: false
+          };
+        });
+        
+        setProcessedFiles(filesWithSize);
         
         toast({
           title: "Batch Processing Complete",
@@ -124,6 +134,41 @@ const AudioWatermarker: React.FC = () => {
     }
   };
   
+  // Play/pause audio
+  const togglePlayPause = (url: string, index: number) => {
+    const newProcessedFiles = [...processedFiles];
+    
+    // Create audio element if it doesn't exist
+    if (!audioRefs.current[url]) {
+      audioRefs.current[url] = new Audio(url);
+      audioRefs.current[url].addEventListener('ended', () => {
+        const updatedFiles = [...processedFiles];
+        updatedFiles[index].isPlaying = false;
+        setProcessedFiles(updatedFiles);
+      });
+    }
+    
+    // Toggle play/pause
+    if (newProcessedFiles[index].isPlaying) {
+      audioRefs.current[url].pause();
+    } else {
+      // Pause all other playing audio
+      Object.values(audioRefs.current).forEach(audio => audio.pause());
+      
+      // Reset all isPlaying states
+      newProcessedFiles.forEach((file, i) => {
+        if (i !== index) newProcessedFiles[i].isPlaying = false;
+      });
+      
+      // Play the selected audio
+      audioRefs.current[url].play();
+    }
+    
+    // Toggle the playing state
+    newProcessedFiles[index].isPlaying = !newProcessedFiles[index].isPlaying;
+    setProcessedFiles(newProcessedFiles);
+  };
+  
   // Download a processed file
   const downloadFile = (url: string, filename: string) => {
     const a = document.createElement("a");
@@ -162,10 +207,23 @@ const AudioWatermarker: React.FC = () => {
         });
       }
       
-      setFiles(audioFiles);
-      setFileSize(null); // Reset file size info
-      // Clear processed files when new files are selected
+      // Add file size information when selecting files
+      const filesWithSize = audioFiles.map(file => {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        console.log(`Original file size: ${sizeMB} MB`);
+        return file;
+      });
+      
+      setFiles(filesWithSize);
+      setFileSize(null);
       setProcessedFiles([]);
+      
+      // Clean up any existing audio elements
+      Object.values(audioRefs.current).forEach(audio => {
+        audio.pause();
+        audio.src = "";
+      });
+      audioRefs.current = {};
     }
   };
 
@@ -238,6 +296,17 @@ const AudioWatermarker: React.FC = () => {
       URL.revokeObjectURL(file.url);
     });
   };
+
+  // Cleanup function for audio elements
+  React.useEffect(() => {
+    return () => {
+      // Cleanup audio elements when component unmounts
+      Object.values(audioRefs.current).forEach(audio => {
+        audio.pause();
+        audio.src = "";
+      });
+    };
+  }, []);
 
   return (
     <div className="container mx-auto py-8 max-w-4xl">
@@ -354,22 +423,39 @@ const AudioWatermarker: React.FC = () => {
                     Download All
                   </Button>
                 </div>
-                <div className="max-h-40 overflow-y-auto border rounded-md p-2">
+                <div className="max-h-60 overflow-y-auto border rounded-md p-2">
                   {processedFiles.map((file, index) => (
                     <div
                       key={index}
                       className="flex justify-between items-center py-2 px-3 odd:bg-muted/30 rounded-sm"
                     >
-                      <span className="truncate max-w-[200px] sm:max-w-xs">
-                        {file.name}
-                      </span>
-                      <Button
-                        onClick={() => downloadFile(file.url, file.name)}
-                        variant="ghost"
-                        size="sm"
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          onClick={() => togglePlayPause(file.url, index)}
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                        >
+                          {file.isPlaying ? (
+                            <Pause className="h-4 w-4" />
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <span className="truncate max-w-[200px] sm:max-w-xs">
+                          {file.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">{file.size}</span>
+                        <Button
+                          onClick={() => downloadFile(file.url, file.name)}
+                          variant="ghost"
+                          size="sm"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

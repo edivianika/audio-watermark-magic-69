@@ -1,3 +1,4 @@
+
 /**
  * Main module for audio processing utilities
  */
@@ -82,9 +83,9 @@ export const addWatermark = async (
         for (let j = 0; j < watermarkBuffer.length; j++) {
           if (startFrame + j >= outputData.length) break;
           
-          // Mix original and watermark audio (50/50 mix)
+          // Mix original and watermark audio (70/30 mix with 90% watermark volume)
           const originalSample = outputData[startFrame + j];
-          const watermarkSample = watermarkData[j] * watermarkVolume;
+          const watermarkSample = watermarkData[j] * watermarkVolume; // Apply 90% volume
           
           // Better mixing formula to preserve original audio quality while ensuring watermark is audible
           outputData[startFrame + j] = originalSample * 0.7 + watermarkSample * 0.3;
@@ -123,7 +124,7 @@ export const processBatch = async (
   watermarkVolume: number,
   watermarkInterval: number,
   progressCallback: (current: number, total: number) => void
-): Promise<{name: string, url: string}[]> => {
+): Promise<{name: string, url: string, size: string}[]> => {
   const results = [];
   
   for (let i = 0; i < files.length; i++) {
@@ -152,7 +153,8 @@ export const processBatch = async (
       
       results.push({
         name: outputFilename,
-        url: url
+        url: url,
+        size: `${finalSizeMB.toFixed(2)} MB`
       });
       
     } catch (error) {
