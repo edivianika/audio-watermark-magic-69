@@ -1,4 +1,3 @@
-
 /**
  * Main module for audio processing utilities
  */
@@ -52,13 +51,16 @@ export const addWatermark = async (
       inputBuffer.sampleRate
     );
     
-    // First, copy the original audio to the output buffer
+    // First, copy the original audio to the output buffer at 80% volume
     for (let channel = 0; channel < numChannels; channel++) {
       const outputData = outputBuffer.getChannelData(channel);
-      outputData.set(inputBuffer.getChannelData(channel));
+      const inputData = inputBuffer.getChannelData(channel);
+      for (let i = 0; i < outputData.length; i++) {
+        outputData[i] = inputData[i] * 0.8; // 80% volume for original audio
+      }
     }
     
-    // Now add watermarks at intervals
+    // Now add watermarks at intervals at 100% volume
     const watermarkFrequency = Math.max(watermarkInterval, inputDuration / 15);
     const numWatermarks = Math.floor(inputDuration / watermarkFrequency);
     
@@ -73,7 +75,7 @@ export const addWatermark = async (
         continue;
       }
       
-      console.log(`Adding watermark at ${startTimeSeconds}s with volume ${watermarkVolume}`);
+      console.log(`Adding watermark at ${startTimeSeconds}s at full volume`);
       
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
         const outputData = outputBuffer.getChannelData(channel);
@@ -83,12 +85,11 @@ export const addWatermark = async (
         for (let j = 0; j < watermarkBuffer.length; j++) {
           if (startFrame + j >= outputData.length) break;
           
-          // Mix original and watermark audio (70/30 mix with 90% watermark volume)
+          // Mix original (already at 80%) with watermark at 100%
           const originalSample = outputData[startFrame + j];
-          const watermarkSample = watermarkData[j] * watermarkVolume; // Apply 90% volume
+          const watermarkSample = watermarkData[j]; // Full volume watermark
           
-          // Better mixing formula to preserve original audio quality while ensuring watermark is audible
-          outputData[startFrame + j] = originalSample * 0.7 + watermarkSample * 0.3;
+          outputData[startFrame + j] = originalSample + watermarkSample;
         }
       }
     }
