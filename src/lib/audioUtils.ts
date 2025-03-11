@@ -1,4 +1,3 @@
-
 /**
  * Main module for audio processing utilities
  */
@@ -77,14 +76,14 @@ export const addWatermark = async (
       }
     }
     
-    // Now add watermarks at intervals at reduced volume with noise reduction
+    // Now add watermarks at intervals at reduced volume with gentle noise reduction
     const watermarkFrequency = Math.max(watermarkInterval, inputDuration / 15);
     const numWatermarks = Math.floor(inputDuration / watermarkFrequency);
     
     console.log(`Adding ${numWatermarks} watermarks at ${watermarkFrequency}s intervals`);
     
-    // Apply noise reduction to watermark buffer
-    const watermarkBufferNR = applyNoiseReduction(watermarkBuffer);
+    // Apply gentle noise reduction to watermark buffer - now more gentle
+    const watermarkBufferNR = applyGentleNoiseReduction(watermarkBuffer);
     
     // Mix watermarks into the output buffer
     for (let i = 0; i < numWatermarks; i++) {
@@ -95,8 +94,8 @@ export const addWatermark = async (
         continue;
       }
       
-      // Use 70% volume for watermark (reduced from original)
-      const watermarkVolumeFactor = 0.7;
+      // Increased volume for watermark to improve clarity
+      const watermarkVolumeFactor = 0.75; // Increased from 0.7
       console.log(`Adding watermark at ${startTimeSeconds}s at ${watermarkVolumeFactor * 100}% volume`);
       
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
@@ -161,11 +160,11 @@ export const addWatermark = async (
       let quality: 'low' | 'medium' | 'high' = 'high';
       
       if (estimatedSizeMB > maxSizeInMB * 1.5 || fileSizeMB > maxSizeInMB * 1.2) {
-        quality = 'low';
-        console.log("Using low quality compression for large file");
+        quality = 'medium'; // Changed from 'low' to 'medium' to maintain better quality
+        console.log("Using medium quality compression for large file");
       } else if (estimatedSizeMB > maxSizeInMB || fileSizeMB > maxSizeInMB) {
-        quality = 'medium';
-        console.log("Using medium quality compression");
+        quality = 'high'; // Changed from 'medium' to 'high'
+        console.log("Using high quality compression");
       }
       
       // Use our custom compression function with size limit
@@ -194,8 +193,8 @@ export const addWatermark = async (
   }
 };
 
-// New function to apply noise reduction to watermark
-function applyNoiseReduction(audioBuffer: AudioBuffer): AudioBuffer {
+// New improved function for gentle noise reduction on watermark
+function applyGentleNoiseReduction(audioBuffer: AudioBuffer): AudioBuffer {
   const context = new (window.AudioContext || (window as any).webkitAudioContext)();
   const newBuffer = context.createBuffer(
     audioBuffer.numberOfChannels,
@@ -208,7 +207,7 @@ function applyNoiseReduction(audioBuffer: AudioBuffer): AudioBuffer {
     const inputData = audioBuffer.getChannelData(channel);
     const outputData = newBuffer.getChannelData(channel);
     
-    // Step 1: Analyze noise floor
+    // Step 1: Analyze noise floor - be more gentle with analysis
     const samples = inputData.length;
     let sum = 0;
     let sumOfSquares = 0;
@@ -223,35 +222,53 @@ function applyNoiseReduction(audioBuffer: AudioBuffer): AudioBuffer {
     const variance = (sumOfSquares / samples) - (mean * mean);
     const stdDeviation = Math.sqrt(variance);
     
-    // Step 2: Calculate noise threshold (typically 2-3x standard deviation)
-    const noiseThreshold = mean + (stdDeviation * 2.5);
+    // Step 2: Calculate noise threshold - use a more gentle threshold
+    // Instead of 2.5x standard deviation, use 1.8x for less aggressive noise reduction
+    const noiseThreshold = mean + (stdDeviation * 1.8);
     
-    // Step 3: Apply soft threshold + smoothing
+    // Step 3: Apply more gentle soft thresholding
     for (let i = 0; i < samples; i++) {
-      // Apply soft thresholding to reduce noise
+      // Apply soft thresholding to reduce noise with more gentle curve
       const absSample = Math.abs(inputData[i]);
       
       if (absSample < noiseThreshold) {
-        // Reduce noise below threshold (don't remove completely for natural sound)
-        const reductionFactor = Math.pow(absSample / noiseThreshold, 1.5);
-        outputData[i] = inputData[i] * reductionFactor;
+        // More gentle noise reduction curve (1.8 power instead of 1.5)
+        // This preserves more of the original audio
+        const reductionFactor = Math.pow(absSample / noiseThreshold, 1.8);
+        outputData[i] = inputData[i] * (0.3 + (0.7 * reductionFactor)); // Keep at least 30% of original
       } else {
+        // Keep full volume for samples above threshold
         outputData[i] = inputData[i];
       }
     }
     
-    // Step 4: Apply light smoothing filter to reduce remaining artifacts
-    const smoothingWindowSize = 3;
+    // Step 4: Apply very light smoothing to reduce artifacts
+    // Use a smaller smoothing window (2 instead of 3)
+    const smoothingWindowSize = 2;
     const tempBuffer = new Float32Array(outputData);
     
     for (let i = smoothingWindowSize; i < samples - smoothingWindowSize; i++) {
-      let sum = 0;
-      for (let j = -smoothingWindowSize; j <= smoothingWindowSize; j++) {
-        sum += tempBuffer[i + j];
+      let sum = tempBuffer[i]; // Start with the center sample at full weight
+      let count = 1;
+      
+      // Add adjacent samples with lower weight
+      for (let j = 1; j <= smoothingWindowSize; j++) {
+        const weight = 0.5 / j; // Decrease weight for samples further away
+        sum += tempBuffer[i - j] * weight;
+        sum += tempBuffer[i + j] * weight;
+        count += weight * 2;
       }
-      outputData[i] = sum / (2 * smoothingWindowSize + 1);
+      
+      // Average with weighted samples
+      outputData[i] = sum / count;
     }
   }
   
   return newBuffer;
+}
+
+// New function to apply noise reduction to watermark
+function applyNoiseReduction(audioBuffer: AudioBuffer): AudioBuffer {
+  // This function is kept for compatibility but now calls the more gentle version
+  return applyGentleNoiseReduction(audioBuffer);
 }
