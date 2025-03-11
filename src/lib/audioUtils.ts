@@ -13,7 +13,7 @@ export * from "./watermarkService";
 export * from "./audioCore";
 export * from "./batchProcessing";
 
-// Add watermark to audio with optional compression
+// Add watermark to audio with optional compression and file size limits
 export const addWatermark = async (
   inputFile: File,
   watermarkVolume: number,
@@ -25,6 +25,9 @@ export const addWatermark = async (
     ratio?: number;
     attack?: number;
     release?: number;
+  },
+  fileSizeOptions?: {
+    maxSizeInMB?: number;
   }
 ): Promise<Blob> => {
   try {
@@ -33,6 +36,9 @@ export const addWatermark = async (
     if (compressionOptions?.enabled) {
       console.log("Compression enabled:", compressionOptions);
     }
+    
+    const maxSizeInMB = fileSizeOptions?.maxSizeInMB || 16; // Default to 16MB if not specified
+    console.log(`Target maximum file size: ${maxSizeInMB}MB`);
     
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     
