@@ -42,11 +42,11 @@ export const processBatch = async (
   const useCompression = compressionOptions?.enabled !== false;
   const finalCompressionOptions = useCompression ? {
     enabled: true,
-    threshold: compressionOptions?.threshold ?? -20, // Updated from -30 to -20
-    knee: compressionOptions?.knee ?? 6,            // Updated from 10 to 6
-    ratio: compressionOptions?.ratio ?? 4,          // Updated from 6 to 4
-    attack: compressionOptions?.attack ?? 0.008,    // Updated from 0.003 to 0.008
-    release: compressionOptions?.release ?? 0.125   // Updated from 0.25 to 0.125
+    threshold: compressionOptions?.threshold ?? -20, // -20dB threshold
+    knee: compressionOptions?.knee ?? 6,            // 6dB knee
+    ratio: compressionOptions?.ratio ?? 4,          // 4:1 ratio
+    attack: compressionOptions?.attack ?? 0.008,    // 8ms attack
+    release: compressionOptions?.release ?? 0.125   // 125ms release
   } : { enabled: false };
   
   for (let i = 0; i < files.length; i++) {
@@ -78,7 +78,7 @@ export const processBatch = async (
       const originalName = file.name;
       const extension = originalName.split('.').pop();
       const nameWithoutExt = originalName.slice(0, originalName.lastIndexOf('.'));
-      // Modified to use _trial_version instead of longer suffix
+      // Simple suffix for processed files
       const outputFilename = `${nameWithoutExt}_trial_version.${extension}`;
       
       const url = URL.createObjectURL(outputBlob);

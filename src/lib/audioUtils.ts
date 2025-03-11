@@ -1,3 +1,4 @@
+
 /**
  * Main module for audio processing utilities
  */
@@ -36,11 +37,11 @@ export const addWatermark = async (
     // Always enable compression by default if not explicitly set
     const useCompression = compressionOptions?.enabled !== false;
     const compressionSettings = useCompression ? {
-      threshold: compressionOptions?.threshold ?? -30, // More aggressive threshold
-      knee: compressionOptions?.knee ?? 10,           // Smaller knee for harder compression
-      ratio: compressionOptions?.ratio ?? 6,          // Higher ratio for more compression
-      attack: compressionOptions?.attack ?? 0.003,
-      release: compressionOptions?.release ?? 0.25
+      threshold: compressionOptions?.threshold ?? -20, // Updated threshold
+      knee: compressionOptions?.knee ?? 6,           // Updated knee
+      ratio: compressionOptions?.ratio ?? 4,          // Updated ratio
+      attack: compressionOptions?.attack ?? 0.008,    // Updated attack (8ms)
+      release: compressionOptions?.release ?? 0.125   // Updated release (125ms)
     } : undefined;
     
     if (useCompression) {
@@ -151,23 +152,31 @@ export const addWatermark = async (
     const targetBitrate = (maxSizeInMB * 8 * 1024 * 0.8) / inputDuration;
     console.log(`Using target bitrate of ${Math.round(targetBitrate)}kbps to stay within ${maxSizeInMB}MB limit`);
     
+    // Determine output format based on input type
+    // WhatsApp supports MP3, OGG, and standard WAV (PCM) formats
+    let outputFormat = "mp3";
+    let mimeType = "audio/mpeg";
+    
+    if (inputFile.type) {
+      if (inputFile.type.includes("ogg")) {
+        outputFormat = "ogg";
+        mimeType = "audio/ogg";
+      } else if (inputFile.type.includes("wav")) {
+        outputFormat = "wav";
+        mimeType = "audio/wav";
+      }
+    }
+    
+    console.log(`Using output format: ${outputFormat}, MIME type: ${mimeType}`);
+    
     // Convert AudioBuffer to raw audio data format with enforced file size limit
+    // For WhatsApp compatibility, ensure 16-bit PCM for WAV, or standard MP3 format
     const rawAudioData = audioBufferToRawFormat(finalBuffer, {
+      format: outputFormat,
       bitrate: targetBitrate,
       enforceFileSizeLimit: true,
       maxSizeMB: maxSizeInMB
     });
-    
-    // For WhatsApp compatibility, we output as MP3 if the input was MP3
-    // Otherwise we keep the original MIME type or default to WAV
-    let mimeType = "audio/wav";
-    if (inputFile.type && inputFile.type.includes("mp3")) {
-      mimeType = "audio/mp3";
-    } else if (inputFile.type) {
-      mimeType = inputFile.type;
-    }
-    
-    console.log(`Using output MIME type: ${mimeType}`);
     
     const outputBlob = new Blob([rawAudioData], { type: mimeType });
     const finalSizeMB = outputBlob.size / (1024 * 1024);
