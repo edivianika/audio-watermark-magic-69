@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -42,7 +41,10 @@ const AudioWatermarker: React.FC = () => {
   const [compressionAttack, setCompressionAttack] = useState(0.003);
   const [compressionRelease, setCompressionRelease] = useState(0.25);
   const [settingsTab, setSettingsTab] = useState("watermark");
-
+  
+  // Maximum file size setting (default 16MB)
+  const [maxFileSizeMB, setMaxFileSizeMB] = useState(16);
+  
   // Process files with watermark
   const processFiles = async () => {
     if (files.length === 0) {
@@ -79,7 +81,8 @@ const AudioWatermarker: React.FC = () => {
             const currentProgress = Math.round(((current) / total) * 100);
             setProgress(currentProgress);
           },
-          compressionOptions
+          compressionOptions,
+          maxFileSizeMB
         );
         
         // Store processed files for download with size information
@@ -94,7 +97,7 @@ const AudioWatermarker: React.FC = () => {
         
         toast({
           title: "Batch Processing Complete",
-          description: `Successfully processed ${results.length} file(s) with watermark${compressionEnabled ? ' and compression' : ''}`,
+          description: `Successfully processed ${results.length} file(s) with watermark${compressionEnabled ? ' and compression' : ''}, max size: ${maxFileSizeMB}MB`,
         });
       } else {
         // Process files one by one with immediate download
@@ -111,7 +114,8 @@ const AudioWatermarker: React.FC = () => {
             file,
             watermarkVolume,
             watermarkInterval,
-            compressionOptions
+            compressionOptions,
+            maxFileSizeMB
           );
 
           const compressedSize = (outputBlob.size / 1024 / 1024).toFixed(2);
@@ -140,7 +144,7 @@ const AudioWatermarker: React.FC = () => {
         
         toast({
           title: "Processing Complete",
-          description: `Successfully processed ${files.length} file(s)`,
+          description: `Successfully processed ${files.length} file(s) with max size ${maxFileSizeMB}MB`,
         });
       }
 
@@ -522,9 +526,10 @@ const AudioWatermarker: React.FC = () => {
             <CollapsibleContent>
               <CardContent className="space-y-6 pt-0">
                 <Tabs defaultValue="watermark" value={settingsTab} onValueChange={setSettingsTab}>
-                  <TabsList className="grid w-full grid-cols-2">
+                  <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="watermark">Watermark</TabsTrigger>
                     <TabsTrigger value="compression">Compression</TabsTrigger>
+                    <TabsTrigger value="output">Output</TabsTrigger>
                   </TabsList>
                   
                   <TabsContent value="watermark" className="space-y-4 pt-4">
@@ -660,6 +665,26 @@ const AudioWatermarker: React.FC = () => {
                         </Button>
                       </div>
                     )}
+                  </TabsContent>
+                  
+                  <TabsContent value="output" className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label htmlFor="max-file-size">Max File Size: {maxFileSizeMB} MB</Label>
+                      </div>
+                      <Slider
+                        id="max-file-size"
+                        min={2}
+                        max={32}
+                        step={1}
+                        value={[maxFileSizeMB]}
+                        onValueChange={(value) => setMaxFileSizeMB(value[0])}
+                        disabled={isProcessing}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Set maximum output file size. Files will be automatically compressed if they exceed this limit.
+                      </p>
+                    </div>
                   </TabsContent>
                 </Tabs>
                 

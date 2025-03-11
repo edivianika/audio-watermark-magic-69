@@ -26,7 +26,8 @@ export const processBatch = async (
     ratio?: number;
     attack?: number;
     release?: number;
-  }
+  },
+  maxSizeInMB: number = 16 // Default max size to 16MB
 ): Promise<{name: string, url: string, size: string}[]> => {
   const results = [];
   
@@ -41,7 +42,8 @@ export const processBatch = async (
         file,
         watermarkVolume,
         watermarkInterval,
-        compressionOptions
+        compressionOptions,
+        maxSizeInMB
       );
       
       // Get the final size after processing

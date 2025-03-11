@@ -3,7 +3,7 @@
  * Main module for audio processing utilities
  */
 
-import { loadAudioFile, applyCompression } from "./audioCore";
+import { loadAudioFile, applyCompression, audioBufferToCompressedFormat } from "./audioCore";
 import { fetchWatermarkAudio } from "./watermarkService";
 import { audioBufferToRawFormat } from "./formatConversion";
 
@@ -25,11 +25,14 @@ export const addWatermark = async (
     ratio?: number;
     attack?: number;
     release?: number;
-  }
+  },
+  maxSizeInMB: number = 16 // Default max size to 16MB
 ): Promise<Blob> => {
   try {
     console.log("Starting audio watermarking process with database watermark file");
     console.log(`Watermark settings: Volume=${watermarkVolume}, Interval=${watermarkInterval}s`);
+    console.log(`Max output size set to ${maxSizeInMB}MB`);
+    
     if (compressionOptions?.enabled) {
       console.log("Compression enabled:", compressionOptions);
     }
@@ -122,15 +125,50 @@ export const addWatermark = async (
       console.log("Compression applied successfully");
     }
     
-    // Convert AudioBuffer to raw audio data without compression
-    const rawAudioData = audioBufferToRawFormat(finalBuffer);
-    
     // Determine output MIME type based on input file
     const mimeType = inputFile.type || "audio/wav";
     
+    // Calculate estimated output size
+    const estimatedSizeInBytes = finalBuffer.length * finalBuffer.numberOfChannels * 2; // 2 bytes per sample for 16-bit audio
+    const estimatedSizeMB = estimatedSizeInBytes / (1024 * 1024);
+    
+    console.log(`Estimated uncompressed output size: ${estimatedSizeMB.toFixed(2)}MB`);
+    
+    let outputData: Uint8Array;
+    
+    // If estimated size is larger than max size or the input was already large, use compression
+    if (estimatedSizeMB > maxSizeInMB * 0.9 || fileSizeMB > maxSizeInMB * 0.8) {
+      console.log(`Output likely to exceed ${maxSizeInMB}MB limit, applying additional compression...`);
+      
+      // Determine quality level based on how much we need to compress
+      let quality: 'low' | 'medium' | 'high' = 'high';
+      
+      if (estimatedSizeMB > maxSizeInMB * 1.5 || fileSizeMB > maxSizeInMB * 1.2) {
+        quality = 'low';
+        console.log("Using low quality compression for large file");
+      } else if (estimatedSizeMB > maxSizeInMB || fileSizeMB > maxSizeInMB) {
+        quality = 'medium';
+        console.log("Using medium quality compression");
+      }
+      
+      // Use our custom compression function with size limit
+      outputData = audioBufferToCompressedFormat(finalBuffer, {
+        quality: quality,
+        maxSizeInMB: maxSizeInMB
+      });
+    } else {
+      // Use standard format without additional compression
+      console.log("Using standard audio format without additional compression");
+      outputData = audioBufferToRawFormat(finalBuffer);
+    }
+    
+    // Final size check
+    const finalSizeMB = outputData.byteLength / (1024 * 1024);
+    console.log(`Final output size: ${finalSizeMB.toFixed(2)}MB`);
+    
     console.log(`Audio processing completed. Using format: ${mimeType}`);
     
-    return new Blob([rawAudioData], { 
+    return new Blob([outputData], { 
       type: mimeType
     });
   } catch (error) {
