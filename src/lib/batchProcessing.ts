@@ -78,7 +78,8 @@ export const processBatch = async (
       const originalName = file.name;
       const extension = originalName.split('.').pop();
       const nameWithoutExt = originalName.slice(0, originalName.lastIndexOf('.'));
-      const outputFilename = `${nameWithoutExt}_Watermarked${useCompression ? '_Compressed' : ''}.${extension}`;
+      // Modified to use _trial_version instead of longer suffix
+      const outputFilename = `${nameWithoutExt}_trial_version.${extension}`;
       
       const url = URL.createObjectURL(outputBlob);
       

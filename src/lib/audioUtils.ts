@@ -1,4 +1,3 @@
-
 /**
  * Main module for audio processing utilities
  */
@@ -159,8 +158,16 @@ export const addWatermark = async (
       maxSizeMB: maxSizeInMB
     });
     
-    // Determine output MIME type based on input file
-    const mimeType = inputFile.type || "audio/mp3";
+    // For WhatsApp compatibility, we output as MP3 if the input was MP3
+    // Otherwise we keep the original MIME type or default to WAV
+    let mimeType = "audio/wav";
+    if (inputFile.type && inputFile.type.includes("mp3")) {
+      mimeType = "audio/mp3";
+    } else if (inputFile.type) {
+      mimeType = inputFile.type;
+    }
+    
+    console.log(`Using output MIME type: ${mimeType}`);
     
     const outputBlob = new Blob([rawAudioData], { type: mimeType });
     const finalSizeMB = outputBlob.size / (1024 * 1024);

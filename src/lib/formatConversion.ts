@@ -1,4 +1,3 @@
-
 /**
  * Audio format conversion utilities
  */
@@ -30,6 +29,7 @@ export const audioBufferToRawFormat = (
   
   // Convert to bytes (8 bits per byte), use lower value for more compression
   // Ensure minimum of 8 bits (1 byte) and maximum of 16 bits (2 bytes)
+  // For WhatsApp compatibility, we're limiting to 16-bit - no higher bit depths
   let bitDepth = Math.min(16, Math.max(8, Math.floor(bitsPerSamplePerChannel / 8) * 8));
   
   console.log(`File size enforcement: ${enforceLimit ? 'enabled' : 'disabled'}`);
@@ -37,7 +37,17 @@ export const audioBufferToRawFormat = (
   console.log(`Required bitrate: ${Math.round(requiredBitrate/1024)}kbps, Using bit depth: ${bitDepth}-bit`);
   
   // For very large files or long durations, we may need to reduce to mono and/or downsample
+  // WhatsApp generally works better with:
+  // - Standard sample rates (44.1kHz or 48kHz)
+  // - MP3 format (but we're outputting WAV which can be consumed by most apps)
   let targetSampleRate = sampleRate;
+  
+  // WhatsApp prefers standard sample rates - ensure we use 44.1kHz if original is higher
+  if (targetSampleRate > 44100) {
+    targetSampleRate = 44100;
+    console.log('Adjusting sample rate to 44.1kHz for compatibility');
+  }
+  
   let targetChannels = numChannels;
   
   // If we're still over the limit with minimum bit depth, use mono instead of stereo
@@ -65,6 +75,13 @@ export const audioBufferToRawFormat = (
     if (targetSampleRate !== originalSampleRate) {
       console.log(`Reducing sample rate from ${originalSampleRate}Hz to ${targetSampleRate}Hz to meet size limit`);
     }
+  }
+  
+  // WhatsApp requires standard audio format - ensure PCM 16-bit for best compatibility
+  // Force 16-bit audio for better compatibility with WhatsApp
+  if (bitDepth < 16) {
+    bitDepth = 16;
+    console.log('Using 16-bit audio for messaging app compatibility');
   }
   
   const bytesPerSample = bitDepth / 8;
@@ -96,9 +113,8 @@ export const audioBufferToRawFormat = (
       console.log('Forcing mono conversion to reduce file size');
     }
     
-    // Force bit depth to minimum
-    finalBitDepth = 8;
-    console.log('Using minimum bit depth (8-bit) to reduce file size');
+    // REMOVED: Keep 16-bit for WhatsApp rather than forcing to 8-bit
+    // finalBitDepth = 8;
     
     // Reduce sample rate more aggressively if needed
     if (estimatedSizeMB > maxSizeMB * 1.5) {

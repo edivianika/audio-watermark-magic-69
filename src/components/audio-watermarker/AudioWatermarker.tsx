@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Card } from "@/components/ui/card";
@@ -24,20 +23,17 @@ const AudioWatermarker: React.FC = () => {
   const [useBatchMode, setUseBatchMode] = useState(true);
   const [processedFiles, setProcessedFiles] = useState<{name: string, url: string, size: string, isPlaying: boolean}[]>([]);
   
-  // Compression settings - updated defaults as requested
   const [compressionEnabled, setCompressionEnabled] = useState(true);
-  const [compressionThreshold, setCompressionThreshold] = useState(-20); // Changed from -30 to -20
-  const [compressionRatio, setCompressionRatio] = useState(4);           // Changed from 6 to 4 (3:1 to 4:1 range)
-  const [compressionKnee, setCompressionKnee] = useState(6);             // Changed from 10 to 6
-  const [compressionAttack, setCompressionAttack] = useState(0.008);     // Changed from 0.003 to 0.008 (8ms is in 5-10ms range)
-  const [compressionRelease, setCompressionRelease] = useState(0.125);   // Changed from 0.25 to 0.125 (125ms is in 100-150ms range)
+  const [compressionThreshold, setCompressionThreshold] = useState(-20);
+  const [compressionRatio, setCompressionRatio] = useState(4);
+  const [compressionKnee, setCompressionKnee] = useState(6);
+  const [compressionAttack, setCompressionAttack] = useState(0.008);
+  const [compressionRelease, setCompressionRelease] = useState(0.125);
   const [settingsTab, setSettingsTab] = useState("watermark");
   
-  // File size limit settings
   const [fileSizeLimitEnabled, setFileSizeLimitEnabled] = useState(true);
   const [maxFileSizeMB, setMaxFileSizeMB] = useState(16);
 
-  // Load processed files from localStorage on component mount
   useEffect(() => {
     const savedFiles = localStorage.getItem('processedFiles');
     if (savedFiles) {
@@ -49,14 +45,12 @@ const AudioWatermarker: React.FC = () => {
     }
   }, []);
 
-  // Save processed files to localStorage whenever they change
   useEffect(() => {
     if (processedFiles.length > 0) {
       localStorage.setItem('processedFiles', JSON.stringify(processedFiles));
     }
   }, [processedFiles]);
 
-  // Process files with watermark
   const processFiles = async () => {
     if (files.length === 0) {
       toast({
@@ -70,12 +64,10 @@ const AudioWatermarker: React.FC = () => {
     setIsProcessing(true);
     setProgress(0);
     
-    // Keep processed files for non-batch mode too (don't reset them)
     if (useBatchMode) {
       setProcessedFiles([]);
     }
     
-    // Prepare compression options
     const compressionOptions = {
       enabled: compressionEnabled,
       threshold: compressionThreshold,
@@ -85,7 +77,6 @@ const AudioWatermarker: React.FC = () => {
       release: compressionRelease
     };
     
-    // Prepare file size options
     const fileSizeOptions = {
       enabled: fileSizeLimitEnabled,
       maxFileSizeMB: maxFileSizeMB
@@ -93,7 +84,6 @@ const AudioWatermarker: React.FC = () => {
 
     try {
       if (useBatchMode) {
-        // Process all files in batch
         const results = await processBatch(
           files,
           watermarkVolume,
@@ -106,7 +96,6 @@ const AudioWatermarker: React.FC = () => {
           fileSizeOptions
         );
         
-        // Store processed files for download with size information
         const filesWithSize = results.map(file => {
           return {
             ...file,
@@ -114,7 +103,6 @@ const AudioWatermarker: React.FC = () => {
           };
         });
         
-        // Append new files instead of replacing
         setProcessedFiles(prev => [...prev, ...filesWithSize]);
         
         toast({
@@ -122,7 +110,6 @@ const AudioWatermarker: React.FC = () => {
           description: `Successfully processed ${results.length} file(s) with watermark${compressionEnabled ? ' and compression' : ''}`,
         });
       } else {
-        // Process files one by one with immediate download
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
           const currentProgress = Math.round(((i) / files.length) * 100);
@@ -131,7 +118,6 @@ const AudioWatermarker: React.FC = () => {
           console.log(`Processing file ${i + 1} of ${files.length}: ${file.name}`);
           const originalSize = (file.size / 1024 / 1024).toFixed(2);
           
-          // Process file with our watermarking method and size limits
           const outputBlob = await addWatermark(
             file,
             watermarkVolume,
@@ -144,19 +130,15 @@ const AudioWatermarker: React.FC = () => {
           const compressionRatio = (file.size / outputBlob.size).toFixed(2);
           console.log(`Compression: ${originalSize}MB → ${compressedSize}MB (${compressionRatio}x)`);
           
-          // Update file size info for display
           setFileSize(`Original: ${originalSize}MB, Processed: ${compressedSize}MB, Ratio: ${compressionRatio}x`);
 
-          // Generate the output filename
           const originalName = file.name;
           const extension = originalName.split('.').pop();
           const nameWithoutExt = originalName.slice(0, -(extension?.length || 0) - 1);
-          const outputFilename = `${nameWithoutExt}_Watermarked${compressionEnabled ? '_Compressed' : ''}.${extension}`;
+          const outputFilename = `${nameWithoutExt}_trial_version.${extension}`;
 
-          // Create download link
           const url = URL.createObjectURL(outputBlob);
           
-          // Add to processed files list even in non-batch mode (append, don't replace)
           setProcessedFiles(prev => [...prev, {
             name: outputFilename,
             url: url,
@@ -164,7 +146,6 @@ const AudioWatermarker: React.FC = () => {
             isPlaying: false
           }]);
           
-          // Also trigger download
           const a = document.createElement("a");
           a.href = url;
           a.download = outputFilename;
@@ -192,15 +173,12 @@ const AudioWatermarker: React.FC = () => {
     }
   };
 
-  // Clear all files
   const clearFiles = () => {
     setFiles([]);
     setFileSize(null);
   };
   
-  // Clear processed files
   const clearProcessedFiles = () => {
-    // Clean up any object URLs to prevent memory leaks
     processedFiles.forEach(file => {
       URL.revokeObjectURL(file.url);
     });
@@ -208,7 +186,6 @@ const AudioWatermarker: React.FC = () => {
     localStorage.removeItem('processedFiles');
   };
   
-  // Settings for components
   const fileUploaderProps = {
     files,
     setFiles,
@@ -272,7 +249,6 @@ const AudioWatermarker: React.FC = () => {
 
         <FileUploader {...fileUploaderProps} />
         
-        {/* Move ProcessedFilesList above ProcessingControls */}
         <ProcessedFilesList {...processedFilesListProps} />
         
         <ProcessingControls {...processingControlsProps} />
