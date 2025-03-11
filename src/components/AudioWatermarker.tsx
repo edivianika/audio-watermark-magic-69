@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -9,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   AudioWaveform, AudioLines, Upload, ChevronDown, ChevronUp, 
-  Settings, FileText, Check, Download, Play, Pause, Wand2
+  Settings, FileText, Check, Download, Play, Pause, Wand2, Music
 } from "lucide-react";
 import { addWatermark, generateUniqueFilename, processBatch } from "@/lib/audioUtils";
 import { Separator } from "@/components/ui/separator";
@@ -372,6 +371,20 @@ const AudioWatermarker: React.FC = () => {
     });
   };
 
+  // Apply the custom natural compression preset
+  const applyNaturalCompressionPreset = () => {
+    setCompressionThreshold(-20); // Less aggressive threshold for natural sound
+    setCompressionRatio(2);       // Lower ratio for subtle compression
+    setCompressionKnee(6);        // Smoother transition
+    setCompressionAttack(0.008);  // 8ms attack time (between 5-10ms as specified)
+    setCompressionRelease(0.125); // 125ms release time (between 100-150ms as specified)
+    
+    toast({
+      title: "Natural Compression Applied",
+      description: "Applied natural-sounding compression preset that preserves dynamics",
+    });
+  };
+
   // Cleanup function for audio elements
   React.useEffect(() => {
     return () => {
@@ -696,22 +709,38 @@ const AudioWatermarker: React.FC = () => {
                           </div>
                         </div>
                         
-                        <Button 
-                          variant="outline"
-                          size="sm"
-                          className="w-full gap-2"
-                          onClick={() => {
-                            setCompressionThreshold(-30);
-                            setCompressionRatio(6);
-                            setCompressionKnee(10);
-                            setCompressionAttack(0.003);
-                            setCompressionRelease(0.25);
-                          }}
-                          disabled={isProcessing}
-                        >
-                          <Wand2 className="h-4 w-4" />
-                          Reset to Default Values
-                        </Button>
+                        <div className="flex flex-col gap-2">
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            className="w-full gap-2"
+                            onClick={() => {
+                              setCompressionThreshold(-30);
+                              setCompressionRatio(6);
+                              setCompressionKnee(10);
+                              setCompressionAttack(0.003);
+                              setCompressionRelease(0.25);
+                            }}
+                            disabled={isProcessing}
+                          >
+                            <Wand2 className="h-4 w-4" />
+                            Reset to Default Values
+                          </Button>
+                          
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            className="w-full gap-2"
+                            onClick={applyNaturalCompressionPreset}
+                            disabled={isProcessing}
+                          >
+                            <Music className="h-4 w-4" />
+                            Natural Compression Preset
+                          </Button>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Threshold: -20dB, Ratio: 2:1, Knee: 6dB, Attack: 8ms, Release: 125ms
+                          </p>
+                        </div>
                       </div>
                     )}
                   </TabsContent>
