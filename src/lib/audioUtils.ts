@@ -1,3 +1,4 @@
+
 /**
  * Main module for audio processing utilities
  */
@@ -146,10 +147,12 @@ export const addWatermark = async (
     const finalBuffer = await applyCompression(outputBuffer, compressionSettings);
     console.log("Compression applied successfully");
     
-    // Convert AudioBuffer to raw audio data format with bitrate control to stay under file size limit
-    const targetBitrate = Math.min(128, (maxSizeInMB * 8 * 1024) / inputDuration);
-    console.log(`Using target bitrate of ${targetBitrate}kbps to stay within ${maxSizeInMB}MB limit`);
+    // Calculate target bitrate based on file size limit
+    // Add a safety factor (0.8) to account for container overhead
+    const targetBitrate = (maxSizeInMB * 8 * 1024 * 0.8) / inputDuration;
+    console.log(`Using target bitrate of ${Math.round(targetBitrate)}kbps to stay within ${maxSizeInMB}MB limit`);
     
+    // Convert AudioBuffer to raw audio data format with enforced file size limit
     const rawAudioData = audioBufferToRawFormat(finalBuffer, {
       bitrate: targetBitrate,
       enforceFileSizeLimit: true,
