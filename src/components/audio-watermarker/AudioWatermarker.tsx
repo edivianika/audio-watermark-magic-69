@@ -1,8 +1,9 @@
+
 import React, { useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { processBatch } from "@/lib/audioUtils";
+import { processBatch, addWatermark } from "@/lib/audioUtils";  // Added import for addWatermark
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import FileUploader from "./FileUploader";
@@ -177,7 +178,8 @@ const AudioWatermarker: React.FC = () => {
     clearFiles,
     fileSizeLimitEnabled,
     maxFileSizeMB,
-    toast
+    toast,
+    fileSize
   };
   
   const processingControlsProps = {
@@ -185,10 +187,6 @@ const AudioWatermarker: React.FC = () => {
     progress,
     processFiles,
     files,
-    useBatchMode,
-    compressionEnabled,
-    showSettings,
-    setShowSettings,
     watermarkInterval,
     setWatermarkInterval,
     compressionEnabled,
@@ -211,6 +209,8 @@ const AudioWatermarker: React.FC = () => {
     setUseBatchMode,
     settingsTab,
     setSettingsTab,
+    showSettings,
+    setShowSettings,
     toast
   };
   

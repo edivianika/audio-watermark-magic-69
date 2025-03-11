@@ -1,11 +1,10 @@
-
 import React, { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AudioWaveform, AudioLines, Upload, Download, Play, Pause, FileText } from "lucide-react";
 import ProcessedFilesList from "./ProcessedFilesList";
-import { Toast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 
 interface FileUploaderProps {
   files: File[];
@@ -32,7 +31,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [processedFiles, setProcessedFiles] = useState<{name: string, url: string, size: string, isPlaying: boolean}[]>([]);
 
-  // Handle file selection
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const filesArray = Array.from(e.target.files);
@@ -48,7 +46,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         });
       }
       
-      // Check file size limits if enabled
       let filteredFiles = audioFiles;
       if (fileSizeLimitEnabled) {
         const oversizedFiles = audioFiles.filter(file => 
@@ -68,7 +65,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         }
       }
       
-      // Add file size information when selecting files
       const filesWithSize = filteredFiles.map(file => {
         const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
         console.log(`Original file size: ${sizeMB} MB`);
@@ -79,14 +75,12 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     }
   };
 
-  // Trigger file input click
   const handleBrowseClick = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
   };
 
-  // Handle drag and drop
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -125,7 +119,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         });
       }
       
-      // Check file size limits if enabled
       let filteredFiles = audioFiles;
       if (fileSizeLimitEnabled) {
         const oversizedFiles = audioFiles.filter(file => 
@@ -192,7 +185,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           </div>
         </div>
 
-        {/* Browse Files Button */}
         <div className="mt-4 flex justify-center gap-2">
           <Button 
             onClick={handleBrowseClick}
@@ -216,7 +208,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           )}
         </div>
 
-        {/* Selected Files */}
         {files.length > 0 && (
           <div className="mt-6">
             <h3 className="font-medium mb-2">Selected Files ({files.length})</h3>
@@ -238,10 +229,8 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           </div>
         )}
         
-        {/* Processed Files List Component */}
         <ProcessedFilesList processedFiles={processedFiles} setProcessedFiles={setProcessedFiles} />
         
-        {/* File Size Information */}
         {fileSize && (
           <div className="mt-4 p-3 bg-muted/30 rounded-md flex items-center gap-2">
             <FileText className="h-4 w-4 text-muted-foreground" />
