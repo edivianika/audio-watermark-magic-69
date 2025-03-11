@@ -1,8 +1,10 @@
-import React, { useState } from "react";
+
+import React, { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { processBatch, addWatermark } from "@/lib/audioUtils";
+import { processBatch } from "@/lib/batchProcessing";
+import { addWatermark } from "@/lib/audioUtils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import FileUploader from "./FileUploader";
@@ -34,6 +36,25 @@ const AudioWatermarker: React.FC = () => {
   // File size limit settings
   const [fileSizeLimitEnabled, setFileSizeLimitEnabled] = useState(true);
   const [maxFileSizeMB, setMaxFileSizeMB] = useState(16);
+
+  // Load processed files from localStorage on component mount
+  useEffect(() => {
+    const savedFiles = localStorage.getItem('processedFiles');
+    if (savedFiles) {
+      try {
+        setProcessedFiles(JSON.parse(savedFiles));
+      } catch (e) {
+        console.error('Error parsing saved files:', e);
+      }
+    }
+  }, []);
+
+  // Save processed files to localStorage whenever they change
+  useEffect(() => {
+    if (processedFiles.length > 0) {
+      localStorage.setItem('processedFiles', JSON.stringify(processedFiles));
+    }
+  }, [processedFiles]);
 
   // Process files with watermark
   const processFiles = async () => {
@@ -93,7 +114,8 @@ const AudioWatermarker: React.FC = () => {
           };
         });
         
-        setProcessedFiles(filesWithSize);
+        // Append new files instead of replacing
+        setProcessedFiles(prev => [...prev, ...filesWithSize]);
         
         toast({
           title: "Batch Processing Complete",
@@ -134,7 +156,7 @@ const AudioWatermarker: React.FC = () => {
           // Create download link
           const url = URL.createObjectURL(outputBlob);
           
-          // Add to processed files list even in non-batch mode
+          // Add to processed files list even in non-batch mode (append, don't replace)
           setProcessedFiles(prev => [...prev, {
             name: outputFilename,
             url: url,
@@ -173,13 +195,17 @@ const AudioWatermarker: React.FC = () => {
   // Clear all files
   const clearFiles = () => {
     setFiles([]);
-    setProcessedFiles([]);
     setFileSize(null);
-    
+  };
+  
+  // Clear processed files
+  const clearProcessedFiles = () => {
     // Clean up any object URLs to prevent memory leaks
     processedFiles.forEach(file => {
       URL.revokeObjectURL(file.url);
     });
+    setProcessedFiles([]);
+    localStorage.removeItem('processedFiles');
   };
   
   // Settings for components
@@ -228,27 +254,28 @@ const AudioWatermarker: React.FC = () => {
   
   const processedFilesListProps = {
     processedFiles,
-    setProcessedFiles
+    setProcessedFiles,
+    clearProcessedFiles
   };
 
   return (
-    <div className="container mx-auto py-8 max-w-4xl">
-      <div className="space-y-8">
+    <div className="container mx-auto py-2 max-w-4xl">
+      <div className="space-y-6">
         <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight mt-6 mb-2">Audio Watermark Magic</h1>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight mt-2 mb-2">IndoMusika Compressor</h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
             Add watermarks to your audio files with precise control over placement and compression
           </p>
         </div>
 
-        <Separator className="my-6" />
+        <Separator className="my-4" />
 
         <FileUploader {...fileUploaderProps} />
         
-        <ProcessingControls {...processingControlsProps} />
-        
-        {/* Added ProcessedFilesList to display processed files */}
+        {/* Move ProcessedFilesList above ProcessingControls */}
         <ProcessedFilesList {...processedFilesListProps} />
+        
+        <ProcessingControls {...processingControlsProps} />
       </div>
     </div>
   );

@@ -1,9 +1,9 @@
+
 import React, { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AudioWaveform, AudioLines, Upload, Download, Play, Pause, FileText } from "lucide-react";
-import ProcessedFilesList from "./ProcessedFilesList";
+import { AudioWaveform, AudioLines, Upload, FileText } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 interface FileUploaderProps {
@@ -29,7 +29,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 }) => {
   const dropzoneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [processedFiles, setProcessedFiles] = useState<{name: string, url: string, size: string, isPlaying: boolean}[]>([]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -143,7 +142,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   }, [toast, fileSizeLimitEnabled, maxFileSizeMB, setFiles]);
 
   return (
-    <Card>
+    <Card className="dark:border-gray-700">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <AudioWaveform className="h-5 w-5" />
@@ -160,7 +159,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={handleBrowseClick}
-          className="border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer hover:border-primary"
+          className="border-2 border-dashed rounded-lg p-8 md:p-12 text-center transition-colors cursor-pointer hover:border-primary dark:border-gray-700 dark:hover:border-gray-500"
         >
           <div className="flex flex-col items-center justify-center space-y-4">
             <AudioLines className="h-12 w-12 text-muted-foreground" />
@@ -211,7 +210,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         {files.length > 0 && (
           <div className="mt-6">
             <h3 className="font-medium mb-2">Selected Files ({files.length})</h3>
-            <div className="max-h-40 overflow-y-auto border rounded-md p-2">
+            <div className="max-h-40 overflow-y-auto border rounded-md p-2 dark:border-gray-700">
               {files.map((file, index) => (
                 <div
                   key={index}
@@ -228,8 +227,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
             </div>
           </div>
         )}
-        
-        <ProcessedFilesList processedFiles={processedFiles} setProcessedFiles={setProcessedFiles} />
         
         {fileSize && (
           <div className="mt-4 p-3 bg-muted/30 rounded-md flex items-center gap-2">

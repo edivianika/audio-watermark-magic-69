@@ -1,7 +1,7 @@
 
 import React, { useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, Play, Pause } from "lucide-react";
+import { Download, Play, Pause, Trash2 } from "lucide-react";
 
 interface ProcessedFilesListProps {
   processedFiles: {name: string, url: string, size: string, isPlaying: boolean}[];
@@ -11,11 +11,13 @@ interface ProcessedFilesListProps {
     size: string;
     isPlaying: boolean;
   }[]>>;
+  clearProcessedFiles?: () => void;
 }
 
 const ProcessedFilesList: React.FC<ProcessedFilesListProps> = ({ 
   processedFiles, 
-  setProcessedFiles 
+  setProcessedFiles,
+  clearProcessedFiles
 }) => {
   const audioRefs = useRef<{[key: string]: HTMLAudioElement}>({});
   
@@ -87,20 +89,33 @@ const ProcessedFilesList: React.FC<ProcessedFilesListProps> = ({
   }
   
   return (
-    <div className="mt-6">
+    <div className="mt-4">
       <div className="flex justify-between items-center mb-2">
         <h3 className="font-medium">Processed Files ({processedFiles.length})</h3>
-        <Button
-          onClick={downloadAllFiles}
-          variant="outline"
-          size="sm"
-          className="gap-1"
-        >
-          <Download className="h-3 w-3" />
-          Download All
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={downloadAllFiles}
+            variant="outline"
+            size="sm"
+            className="gap-1"
+          >
+            <Download className="h-3 w-3" />
+            Download All
+          </Button>
+          {clearProcessedFiles && (
+            <Button
+              onClick={clearProcessedFiles}
+              variant="outline"
+              size="sm"
+              className="gap-1 text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-3 w-3" />
+              Clear All
+            </Button>
+          )}
+        </div>
       </div>
-      <div className="max-h-60 overflow-y-auto border rounded-md p-2">
+      <div className="max-h-60 overflow-y-auto border rounded-md p-2 dark:border-gray-700">
         {processedFiles.map((file, index) => (
           <div
             key={index}
@@ -119,12 +134,12 @@ const ProcessedFilesList: React.FC<ProcessedFilesListProps> = ({
                   <Play className="h-4 w-4" />
                 )}
               </Button>
-              <span className="truncate max-w-[200px] sm:max-w-xs">
+              <span className="truncate max-w-[160px] sm:max-w-[200px] md:max-w-xs">
                 {file.name}
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">{file.size}</span>
+              <span className="text-sm text-muted-foreground hidden sm:inline">{file.size}</span>
               <Button
                 onClick={() => downloadFile(file.url, file.name)}
                 variant="ghost"
