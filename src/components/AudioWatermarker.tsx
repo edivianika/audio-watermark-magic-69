@@ -42,6 +42,10 @@ const AudioWatermarker: React.FC = () => {
   const [compressionAttack, setCompressionAttack] = useState(0.003);
   const [compressionRelease, setCompressionRelease] = useState(0.25);
   const [settingsTab, setSettingsTab] = useState("watermark");
+  
+  // File size limit settings
+  const [fileSizeLimitEnabled, setFileSizeLimitEnabled] = useState(false);
+  const [maxFileSizeMB, setMaxFileSizeMB] = useState(50); // Default 50MB limit
 
   // Process files with watermark
   const processFiles = async () => {
@@ -230,8 +234,28 @@ const AudioWatermarker: React.FC = () => {
         });
       }
       
+      // Check file size limits if enabled
+      let filteredFiles = audioFiles;
+      if (fileSizeLimitEnabled) {
+        const oversizedFiles = audioFiles.filter(file => 
+          (file.size / (1024 * 1024)) > maxFileSizeMB
+        );
+        
+        if (oversizedFiles.length > 0) {
+          toast({
+            title: "Files Exceeding Size Limit",
+            description: `${oversizedFiles.length} file(s) exceed the ${maxFileSizeMB}MB limit and were skipped`,
+            variant: "destructive",
+          });
+          
+          filteredFiles = audioFiles.filter(file => 
+            (file.size / (1024 * 1024)) <= maxFileSizeMB
+          );
+        }
+      }
+      
       // Add file size information when selecting files
-      const filesWithSize = audioFiles.map(file => {
+      const filesWithSize = filteredFiles.map(file => {
         const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
         console.log(`Original file size: ${sizeMB} MB`);
         return file;
@@ -296,12 +320,32 @@ const AudioWatermarker: React.FC = () => {
         });
       }
       
-      setFiles(audioFiles);
+      // Check file size limits if enabled
+      let filteredFiles = audioFiles;
+      if (fileSizeLimitEnabled) {
+        const oversizedFiles = audioFiles.filter(file => 
+          (file.size / (1024 * 1024)) > maxFileSizeMB
+        );
+        
+        if (oversizedFiles.length > 0) {
+          toast({
+            title: "Files Exceeding Size Limit",
+            description: `${oversizedFiles.length} file(s) exceed the ${maxFileSizeMB}MB limit and were skipped`,
+            variant: "destructive",
+          });
+          
+          filteredFiles = audioFiles.filter(file => 
+            (file.size / (1024 * 1024)) <= maxFileSizeMB
+          );
+        }
+      }
+      
+      setFiles(filteredFiles);
       setFileSize(null); // Reset file size info
       // Clear processed files when new files are selected
       setProcessedFiles([]);
     }
-  }, [toast]);
+  }, [toast, fileSizeLimitEnabled, maxFileSizeMB]);
 
   // Toggle settings visibility
   const toggleSettings = () => {
@@ -360,6 +404,7 @@ const AudioWatermarker: React.FC = () => {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
+              onClick={handleBrowseClick}
               className="border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer hover:border-primary"
             >
               <div className="flex flex-col items-center justify-center space-y-4">
@@ -522,9 +567,10 @@ const AudioWatermarker: React.FC = () => {
             <CollapsibleContent>
               <CardContent className="space-y-6 pt-0">
                 <Tabs defaultValue="watermark" value={settingsTab} onValueChange={setSettingsTab}>
-                  <TabsList className="grid w-full grid-cols-2">
+                  <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="watermark">Watermark</TabsTrigger>
                     <TabsTrigger value="compression">Compression</TabsTrigger>
+                    <TabsTrigger value="limits">File Limits</TabsTrigger>
                   </TabsList>
                   
                   <TabsContent value="watermark" className="space-y-4 pt-4">
@@ -658,6 +704,46 @@ const AudioWatermarker: React.FC = () => {
                           <Wand2 className="h-4 w-4" />
                           Reset to Default Values
                         </Button>
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  {/* New File Limits Tab */}
+                  <TabsContent value="limits" className="space-y-4 pt-4">
+                    <div className="flex items-center space-x-2 mb-4">
+                      <Switch
+                        id="file-size-limit-toggle"
+                        checked={fileSizeLimitEnabled}
+                        onCheckedChange={setFileSizeLimitEnabled}
+                        disabled={isProcessing}
+                      />
+                      <Label htmlFor="file-size-limit-toggle" className="font-medium">Enable File Size Limit</Label>
+                    </div>
+                    
+                    {fileSizeLimitEnabled && (
+                      <div className="space-y-4 pt-2">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <Label htmlFor="max-file-size">Maximum File Size: {maxFileSizeMB} MB</Label>
+                          </div>
+                          <Slider
+                            id="max-file-size"
+                            min={1}
+                            max={500}
+                            step={1}
+                            value={[maxFileSizeMB]}
+                            onValueChange={(value) => setMaxFileSizeMB(value[0])}
+                            disabled={isProcessing}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Files larger than this limit will be skipped
+                          </p>
+                        </div>
+                        
+                        <div className="flex justify-between text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
+                          <span>Current setting:</span>
+                          <span>{fileSizeLimitEnabled ? `${maxFileSizeMB} MB limit` : "No limit"}</span>
+                        </div>
                       </div>
                     )}
                   </TabsContent>
