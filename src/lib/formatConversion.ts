@@ -3,11 +3,18 @@
  * Audio format conversion utilities
  */
 
-// Convert AudioBuffer to raw audio format without compression
-export const audioBufferToRawFormat = (buffer: AudioBuffer): Uint8Array => {
+// Convert AudioBuffer to raw audio format with options for bitrate and file size limits
+export const audioBufferToRawFormat = (
+  buffer: AudioBuffer,
+  options?: {
+    bitrate?: number;
+    enforceFileSizeLimit?: boolean;
+    maxSizeMB?: number;
+  }
+): Uint8Array => {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
-  const bitDepth = 16; // Use 16-bit for good quality
+  const bitDepth = options?.bitrate ? Math.min(16, Math.floor(options.bitrate / 8)) : 16; // Adjust bit depth based on target bitrate
   const bytesPerSample = bitDepth / 8;
   const blockAlign = numChannels * bytesPerSample;
   const byteRate = sampleRate * blockAlign;
