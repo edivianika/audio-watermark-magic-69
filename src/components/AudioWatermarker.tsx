@@ -71,6 +71,12 @@ const AudioWatermarker: React.FC = () => {
       attack: compressionAttack,
       release: compressionRelease
     } : { enabled: false };
+    
+    // Prepare file size options
+    const fileSizeOptions = {
+      enabled: fileSizeLimitEnabled,
+      maxFileSizeMB: maxFileSizeMB
+    };
 
     try {
       if (useBatchMode) {
@@ -83,7 +89,8 @@ const AudioWatermarker: React.FC = () => {
             const currentProgress = Math.round(((current) / total) * 100);
             setProgress(currentProgress);
           },
-          compressionOptions
+          compressionOptions,
+          fileSizeOptions
         );
         
         // Store processed files for download with size information
@@ -110,12 +117,13 @@ const AudioWatermarker: React.FC = () => {
           console.log(`Processing file ${i + 1} of ${files.length}: ${file.name}`);
           const originalSize = (file.size / 1024 / 1024).toFixed(2);
           
-          // Process file with our watermarking method
+          // Process file with our watermarking method and size limits
           const outputBlob = await addWatermark(
             file,
             watermarkVolume,
             watermarkInterval,
-            compressionOptions
+            compressionOptions,
+            { maxSizeInMB: fileSizeLimitEnabled ? maxFileSizeMB : 16 } // Apply 16MB default
           );
 
           const compressedSize = (outputBlob.size / 1024 / 1024).toFixed(2);
