@@ -81,15 +81,29 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
   
   // Apply the custom natural compression preset
   const applyNaturalCompressionPreset = () => {
-    setCompressionThreshold(-20); // Less aggressive threshold for natural sound
-    setCompressionRatio(2);       // Lower ratio for subtle compression
-    setCompressionKnee(6);        // Smoother transition
-    setCompressionAttack(0.008);  // 8ms attack time (between 5-10ms as specified)
-    setCompressionRelease(0.125); // 125ms release time (between 100-150ms as specified)
+    setCompressionThreshold(-20); // -20dB threshold as specified
+    setCompressionRatio(4);       // 4:1 ratio as specified (in 3:1 to 4:1 range)
+    setCompressionKnee(6);        // 6dB knee as specified
+    setCompressionAttack(0.008);  // 8ms attack time (in 5-10ms range)
+    setCompressionRelease(0.125); // 125ms release time (in 100-150ms range)
     
     toast({
       title: "Natural Compression Applied",
       description: "Applied natural-sounding compression preset that preserves dynamics",
+    });
+  };
+  
+  // Reset to the new default values
+  const resetToDefaultValues = () => {
+    setCompressionThreshold(-20);
+    setCompressionRatio(4);
+    setCompressionKnee(6);
+    setCompressionAttack(0.008);
+    setCompressionRelease(0.125);
+    
+    toast({
+      title: "Default Settings Applied",
+      description: "Reset compression settings to default values",
     });
   };
   
@@ -246,13 +260,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                         variant="outline"
                         size="sm"
                         className="w-full gap-2"
-                        onClick={() => {
-                          setCompressionThreshold(-30);
-                          setCompressionRatio(6);
-                          setCompressionKnee(10);
-                          setCompressionAttack(0.003);
-                          setCompressionRelease(0.25);
-                        }}
+                        onClick={resetToDefaultValues}
                         disabled={isProcessing}
                       >
                         <Wand2 className="h-4 w-4" />
@@ -270,7 +278,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                         Natural Compression Preset
                       </Button>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Threshold: -20dB, Ratio: 2:1, Knee: 6dB, Attack: 8ms, Release: 125ms
+                        Threshold: -20dB, Ratio: 4:1, Knee: 6dB, Attack: 8ms, Release: 125ms
                       </p>
                     </div>
                   </div>

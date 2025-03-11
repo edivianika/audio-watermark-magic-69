@@ -1,9 +1,8 @@
-
 import React, { useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { processBatch, addWatermark } from "@/lib/audioUtils";  // Added import for addWatermark
+import { processBatch, addWatermark } from "@/lib/audioUtils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import FileUploader from "./FileUploader";
@@ -23,13 +22,13 @@ const AudioWatermarker: React.FC = () => {
   const [useBatchMode, setUseBatchMode] = useState(true);
   const [processedFiles, setProcessedFiles] = useState<{name: string, url: string, size: string, isPlaying: boolean}[]>([]);
   
-  // Compression settings
+  // Compression settings - updated defaults as requested
   const [compressionEnabled, setCompressionEnabled] = useState(true);
-  const [compressionThreshold, setCompressionThreshold] = useState(-30);
-  const [compressionRatio, setCompressionRatio] = useState(6);
-  const [compressionKnee, setCompressionKnee] = useState(10);
-  const [compressionAttack, setCompressionAttack] = useState(0.003);
-  const [compressionRelease, setCompressionRelease] = useState(0.25);
+  const [compressionThreshold, setCompressionThreshold] = useState(-20); // Changed from -30 to -20
+  const [compressionRatio, setCompressionRatio] = useState(4);           // Changed from 6 to 4 (3:1 to 4:1 range)
+  const [compressionKnee, setCompressionKnee] = useState(6);             // Changed from 10 to 6
+  const [compressionAttack, setCompressionAttack] = useState(0.008);     // Changed from 0.003 to 0.008 (8ms is in 5-10ms range)
+  const [compressionRelease, setCompressionRelease] = useState(0.125);   // Changed from 0.25 to 0.125 (125ms is in 100-150ms range)
   const [settingsTab, setSettingsTab] = useState("watermark");
   
   // File size limit settings
@@ -49,7 +48,11 @@ const AudioWatermarker: React.FC = () => {
 
     setIsProcessing(true);
     setProgress(0);
-    setProcessedFiles([]);
+    
+    // Keep processed files for non-batch mode too (don't reset them)
+    if (useBatchMode) {
+      setProcessedFiles([]);
+    }
     
     // Prepare compression options
     const compressionOptions = {
@@ -122,21 +125,30 @@ const AudioWatermarker: React.FC = () => {
           // Update file size info for display
           setFileSize(`Original: ${originalSize}MB, Processed: ${compressedSize}MB, Ratio: ${compressionRatio}x`);
 
-          // Generate the trial filename
+          // Generate the output filename
           const originalName = file.name;
           const extension = originalName.split('.').pop();
           const nameWithoutExt = originalName.slice(0, -(extension?.length || 0) - 1);
-          const trialFilename = `${nameWithoutExt}_Processed${compressionEnabled ? '_Compressed' : ''}.${extension}`;
+          const outputFilename = `${nameWithoutExt}_Watermarked${compressionEnabled ? '_Compressed' : ''}.${extension}`;
 
           // Create download link
           const url = URL.createObjectURL(outputBlob);
+          
+          // Add to processed files list even in non-batch mode
+          setProcessedFiles(prev => [...prev, {
+            name: outputFilename,
+            url: url,
+            size: `${compressedSize} MB`,
+            isPlaying: false
+          }]);
+          
+          // Also trigger download
           const a = document.createElement("a");
           a.href = url;
-          a.download = trialFilename;
+          a.download = outputFilename;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          URL.revokeObjectURL(url);
         }
         
         toast({
@@ -234,6 +246,9 @@ const AudioWatermarker: React.FC = () => {
         <FileUploader {...fileUploaderProps} />
         
         <ProcessingControls {...processingControlsProps} />
+        
+        {/* Added ProcessedFilesList to display processed files */}
+        <ProcessedFilesList {...processedFilesListProps} />
       </div>
     </div>
   );

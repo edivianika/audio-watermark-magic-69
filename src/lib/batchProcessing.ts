@@ -42,11 +42,11 @@ export const processBatch = async (
   const useCompression = compressionOptions?.enabled !== false;
   const finalCompressionOptions = useCompression ? {
     enabled: true,
-    threshold: compressionOptions?.threshold ?? -30, // More aggressive threshold
-    knee: compressionOptions?.knee ?? 10,            // Smaller knee for harder compression
-    ratio: compressionOptions?.ratio ?? 6,           // Higher ratio for more compression
-    attack: compressionOptions?.attack ?? 0.003,
-    release: compressionOptions?.release ?? 0.25
+    threshold: compressionOptions?.threshold ?? -20, // Updated from -30 to -20
+    knee: compressionOptions?.knee ?? 6,            // Updated from 10 to 6
+    ratio: compressionOptions?.ratio ?? 4,          // Updated from 6 to 4
+    attack: compressionOptions?.attack ?? 0.008,    // Updated from 0.003 to 0.008
+    release: compressionOptions?.release ?? 0.125   // Updated from 0.25 to 0.125
   } : { enabled: false };
   
   for (let i = 0; i < files.length; i++) {
