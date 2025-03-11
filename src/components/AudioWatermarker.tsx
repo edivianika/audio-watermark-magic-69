@@ -34,18 +34,18 @@ const AudioWatermarker: React.FC = () => {
   const [processedFiles, setProcessedFiles] = useState<{name: string, url: string, size: string, isPlaying: boolean}[]>([]);
   const audioRefs = useRef<{[key: string]: HTMLAudioElement}>({});
   
-  // Compression settings
-  const [compressionEnabled, setCompressionEnabled] = useState(false);
-  const [compressionThreshold, setCompressionThreshold] = useState(-24);
-  const [compressionRatio, setCompressionRatio] = useState(4);
-  const [compressionKnee, setCompressionKnee] = useState(30);
+  // Compression settings - ENABLED by default with optimal values
+  const [compressionEnabled, setCompressionEnabled] = useState(true);
+  const [compressionThreshold, setCompressionThreshold] = useState(-30);
+  const [compressionRatio, setCompressionRatio] = useState(6);
+  const [compressionKnee, setCompressionKnee] = useState(10);
   const [compressionAttack, setCompressionAttack] = useState(0.003);
   const [compressionRelease, setCompressionRelease] = useState(0.25);
   const [settingsTab, setSettingsTab] = useState("watermark");
   
-  // File size limit settings
-  const [fileSizeLimitEnabled, setFileSizeLimitEnabled] = useState(false);
-  const [maxFileSizeMB, setMaxFileSizeMB] = useState(50); // Default 50MB limit
+  // File size limit settings - ENABLED by default with 16MB limit
+  const [fileSizeLimitEnabled, setFileSizeLimitEnabled] = useState(true);
+  const [maxFileSizeMB, setMaxFileSizeMB] = useState(16); // Default 16MB limit
 
   // Process files with watermark
   const processFiles = async () => {
@@ -62,17 +62,17 @@ const AudioWatermarker: React.FC = () => {
     setProgress(0);
     setProcessedFiles([]);
     
-    // Prepare compression options
-    const compressionOptions = compressionEnabled ? {
-      enabled: true,
+    // Prepare compression options - always enabled by default
+    const compressionOptions = {
+      enabled: compressionEnabled,
       threshold: compressionThreshold,
       knee: compressionKnee,
       ratio: compressionRatio,
       attack: compressionAttack,
       release: compressionRelease
-    } : { enabled: false };
+    };
     
-    // Prepare file size options
+    // Prepare file size options - always enforce 16MB limit by default
     const fileSizeOptions = {
       enabled: fileSizeLimitEnabled,
       maxFileSizeMB: maxFileSizeMB
@@ -123,7 +123,7 @@ const AudioWatermarker: React.FC = () => {
             watermarkVolume,
             watermarkInterval,
             compressionOptions,
-            { maxSizeInMB: fileSizeLimitEnabled ? maxFileSizeMB : 16 } // Apply 16MB default
+            { maxSizeInMB: maxFileSizeMB }
           );
 
           const compressedSize = (outputBlob.size / 1024 / 1024).toFixed(2);
@@ -701,9 +701,9 @@ const AudioWatermarker: React.FC = () => {
                           size="sm"
                           className="w-full gap-2"
                           onClick={() => {
-                            setCompressionThreshold(-24);
-                            setCompressionRatio(4);
-                            setCompressionKnee(30);
+                            setCompressionThreshold(-30);
+                            setCompressionRatio(6);
+                            setCompressionKnee(10);
                             setCompressionAttack(0.003);
                             setCompressionRelease(0.25);
                           }}
@@ -716,7 +716,7 @@ const AudioWatermarker: React.FC = () => {
                     )}
                   </TabsContent>
                   
-                  {/* New File Limits Tab */}
+                  {/* File Limits Tab */}
                   <TabsContent value="limits" className="space-y-4 pt-4">
                     <div className="flex items-center space-x-2 mb-4">
                       <Switch
@@ -737,20 +737,27 @@ const AudioWatermarker: React.FC = () => {
                           <Slider
                             id="max-file-size"
                             min={1}
-                            max={500}
+                            max={100}
                             step={1}
                             value={[maxFileSizeMB]}
                             onValueChange={(value) => setMaxFileSizeMB(value[0])}
                             disabled={isProcessing}
                           />
                           <p className="text-xs text-muted-foreground mt-1">
-                            Files larger than this limit will be skipped
+                            Output files will be compressed to stay under this limit
                           </p>
                         </div>
                         
                         <div className="flex justify-between text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
                           <span>Current setting:</span>
                           <span>{fileSizeLimitEnabled ? `${maxFileSizeMB} MB limit` : "No limit"}</span>
+                        </div>
+                        
+                        <div className="p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md">
+                          <p className="text-sm text-amber-800 dark:text-amber-300">
+                            <strong>Note:</strong> Files will be automatically compressed (mono conversion, bitrate reduction) 
+                            to stay under the specified limit while preserving audio quality.
+                          </p>
                         </div>
                       </div>
                     )}

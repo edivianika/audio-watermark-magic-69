@@ -1,4 +1,3 @@
-
 /**
  * Main module for audio processing utilities
  */
@@ -33,11 +32,22 @@ export const addWatermark = async (
   try {
     console.log("Starting audio watermarking process with database watermark file");
     console.log(`Watermark settings: Volume=${watermarkVolume}, Interval=${watermarkInterval}s`);
-    if (compressionOptions?.enabled) {
-      console.log("Compression enabled:", compressionOptions);
+    
+    // Always enable compression by default if not explicitly set
+    const useCompression = compressionOptions?.enabled !== false;
+    const compressionSettings = useCompression ? {
+      threshold: compressionOptions?.threshold ?? -30, // More aggressive threshold
+      knee: compressionOptions?.knee ?? 10,           // Smaller knee for harder compression
+      ratio: compressionOptions?.ratio ?? 6,          // Higher ratio for more compression
+      attack: compressionOptions?.attack ?? 0.003,
+      release: compressionOptions?.release ?? 0.25
+    } : undefined;
+    
+    if (useCompression) {
+      console.log("Compression enabled:", compressionSettings);
     }
     
-    const maxSizeInMB = fileSizeOptions?.maxSizeInMB || 16; // Default to 16MB if not specified
+    const maxSizeInMB = fileSizeOptions?.maxSizeInMB || 16; // Default to 16MB limit
     console.log(`Target maximum file size: ${maxSizeInMB}MB`);
     
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -58,13 +68,17 @@ export const addWatermark = async (
     const fileSizeMB = inputFile.size / (1024 * 1024);
     console.log(`Original file size: ${fileSizeMB.toFixed(2)} MB`);
     
-    // No compression or conversion to mono - keep original format
-    const numChannels = inputBuffer.numberOfChannels;
+    // Determine if we need to convert to mono to save space
+    const shouldConvertToMono = fileSizeMB > maxSizeInMB * 0.8;
+    const numChannels = shouldConvertToMono ? 1 : inputBuffer.numberOfChannels;
     const inputDuration = inputBuffer.duration;
     
     console.log(`Input duration: ${inputDuration}s, Channels: ${numChannels}`);
+    if (shouldConvertToMono) {
+      console.log("Converting to mono to reduce file size");
+    }
     
-    // Create output buffer with same specs as input
+    // Create output buffer (with mono conversion if needed)
     const outputBuffer = audioContext.createBuffer(
       numChannels,
       inputBuffer.length,
@@ -74,13 +88,26 @@ export const addWatermark = async (
     // First, copy the original audio to the output buffer at 80% volume
     for (let channel = 0; channel < numChannels; channel++) {
       const outputData = outputBuffer.getChannelData(channel);
-      const inputData = inputBuffer.getChannelData(channel);
-      for (let i = 0; i < outputData.length; i++) {
-        outputData[i] = inputData[i] * 0.8; // 80% volume for original audio
+      if (shouldConvertToMono) {
+        // If converting to mono, average all input channels
+        const numInputChannels = inputBuffer.numberOfChannels;
+        for (let i = 0; i < outputData.length; i++) {
+          let sum = 0;
+          for (let inputChannel = 0; inputChannel < numInputChannels; inputChannel++) {
+            sum += inputBuffer.getChannelData(inputChannel)[i];
+          }
+          outputData[i] = (sum / numInputChannels) * 0.8; // 80% volume
+        }
+      } else {
+        // Otherwise copy channel directly
+        const inputData = inputBuffer.getChannelData(channel);
+        for (let i = 0; i < outputData.length; i++) {
+          outputData[i] = inputData[i] * 0.8; // 80% volume for original audio
+        }
       }
     }
     
-    // Now add watermarks at intervals at 100% volume
+    // Now add watermarks at intervals at appropriate volume
     const watermarkFrequency = Math.max(watermarkInterval, inputDuration / 15);
     const numWatermarks = Math.floor(inputDuration / watermarkFrequency);
     
@@ -95,7 +122,7 @@ export const addWatermark = async (
         continue;
       }
       
-      console.log(`Adding watermark at ${startTimeSeconds}s at full volume`);
+      console.log(`Adding watermark at ${startTimeSeconds}s at appropriate volume`);
       
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
         const outputData = outputBuffer.getChannelData(channel);
@@ -105,40 +132,43 @@ export const addWatermark = async (
         for (let j = 0; j < watermarkBuffer.length; j++) {
           if (startFrame + j >= outputData.length) break;
           
-          // Mix original (already at 80%) with watermark at 100%
+          // Mix original (already at 80%) with watermark at appropriate volume
           const originalSample = outputData[startFrame + j];
-          const watermarkSample = watermarkData[j]; // Full volume watermark
+          const watermarkSample = watermarkData[j] * watermarkVolume; // Control watermark volume
           
           outputData[startFrame + j] = originalSample + watermarkSample;
         }
       }
     }
     
-    // Apply compression if enabled
-    let finalBuffer = outputBuffer;
-    if (compressionOptions?.enabled) {
-      console.log("Applying audio compression...");
-      finalBuffer = await applyCompression(outputBuffer, {
-        threshold: compressionOptions.threshold,
-        knee: compressionOptions.knee,
-        ratio: compressionOptions.ratio,
-        attack: compressionOptions.attack,
-        release: compressionOptions.release
-      });
-      console.log("Compression applied successfully");
-    }
+    // Apply compression by default to control file size
+    console.log("Applying audio compression...");
+    const finalBuffer = await applyCompression(outputBuffer, compressionSettings);
+    console.log("Compression applied successfully");
     
-    // Convert AudioBuffer to raw audio data without compression
-    const rawAudioData = audioBufferToRawFormat(finalBuffer);
+    // Convert AudioBuffer to raw audio data format with bitrate control to stay under file size limit
+    const targetBitrate = Math.min(128, (maxSizeInMB * 8 * 1024) / inputDuration);
+    console.log(`Using target bitrate of ${targetBitrate}kbps to stay within ${maxSizeInMB}MB limit`);
+    
+    const rawAudioData = audioBufferToRawFormat(finalBuffer, {
+      bitrate: targetBitrate,
+      enforceFileSizeLimit: true,
+      maxSizeMB: maxSizeInMB
+    });
     
     // Determine output MIME type based on input file
-    const mimeType = inputFile.type || "audio/wav";
+    const mimeType = inputFile.type || "audio/mp3";
     
-    console.log(`Audio processing completed. Using format: ${mimeType}`);
+    const outputBlob = new Blob([rawAudioData], { type: mimeType });
+    const finalSizeMB = outputBlob.size / (1024 * 1024);
     
-    return new Blob([rawAudioData], { 
-      type: mimeType
-    });
+    console.log(`Audio processing completed. Final size: ${finalSizeMB.toFixed(2)}MB (target: ${maxSizeInMB}MB)`);
+    
+    if (finalSizeMB > maxSizeInMB) {
+      console.warn(`Warning: Final size ${finalSizeMB.toFixed(2)}MB still exceeds target ${maxSizeInMB}MB`);
+    }
+    
+    return outputBlob;
   } catch (error) {
     console.error("Error processing audio:", error);
     throw error;

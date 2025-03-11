@@ -34,10 +34,20 @@ export const processBatch = async (
 ): Promise<{name: string, url: string, size: string}[]> => {
   const results = [];
   
-  // Set default max file size to 16MB if not specified
-  const maxFileSizeMB = fileSizeOptions?.enabled 
-    ? (fileSizeOptions.maxFileSizeMB || 16) 
-    : 16; // Always enforce 16MB default
+  // Set default max file size to 16MB if not specified and always enable by default
+  const maxFileSizeMB = fileSizeOptions?.maxFileSizeMB || 16;
+  console.log(`Target maximum file size: ${maxFileSizeMB}MB`);
+  
+  // Always enable compression by default unless explicitly disabled
+  const useCompression = compressionOptions?.enabled !== false;
+  const finalCompressionOptions = useCompression ? {
+    enabled: true,
+    threshold: compressionOptions?.threshold ?? -30, // More aggressive threshold
+    knee: compressionOptions?.knee ?? 10,            // Smaller knee for harder compression
+    ratio: compressionOptions?.ratio ?? 6,           // Higher ratio for more compression
+    attack: compressionOptions?.attack ?? 0.003,
+    release: compressionOptions?.release ?? 0.25
+  } : { enabled: false };
   
   for (let i = 0; i < files.length; i++) {
     try {
@@ -52,7 +62,7 @@ export const processBatch = async (
         file,
         watermarkVolume,
         watermarkInterval,
-        compressionOptions,
+        finalCompressionOptions,
         { maxSizeInMB: maxFileSizeMB }
       );
       
@@ -68,7 +78,7 @@ export const processBatch = async (
       const originalName = file.name;
       const extension = originalName.split('.').pop();
       const nameWithoutExt = originalName.slice(0, originalName.lastIndexOf('.'));
-      const outputFilename = `${nameWithoutExt}_Watermarked${compressionOptions?.enabled ? '_Compressed' : ''}.${extension}`;
+      const outputFilename = `${nameWithoutExt}_Watermarked${useCompression ? '_Compressed' : ''}.${extension}`;
       
       const url = URL.createObjectURL(outputBlob);
       
