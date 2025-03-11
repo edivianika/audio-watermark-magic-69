@@ -1,5 +1,5 @@
 
-import AudioWatermarker from "@/components/AudioWatermarker";
+import AudioWatermarker from "@/components/audio-watermarker";
 import WatermarkManager from "@/components/WatermarkManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
