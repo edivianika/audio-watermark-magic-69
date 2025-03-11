@@ -1,3 +1,4 @@
+
 /**
  * Audio format conversion utilities
  */
@@ -49,6 +50,8 @@ export const audioBufferToRawFormat = (
   if (enforceLimit && bitDepth === 8 && targetChannels === 1 && (bitDepth * targetSampleRate) > requiredBitrate) {
     // Find a reasonable sample rate that meets our bitrate requirements
     // Common values: 44100, 22050, 11025, 8000
+    const originalSampleRate = targetSampleRate;
+    
     if (requiredBitrate < 8000 * 8) {
       targetSampleRate = 8000;
     } else if (requiredBitrate < 11025 * 8) {
@@ -59,8 +62,8 @@ export const audioBufferToRawFormat = (
       targetSampleRate = 44100;
     }
     
-    if (targetSampleRate !== sampleRate) {
-      console.log(`Reducing sample rate from ${sampleRate}Hz to ${targetSampleRate}Hz to meet size limit`);
+    if (targetSampleRate !== originalSampleRate) {
+      console.log(`Reducing sample rate from ${originalSampleRate}Hz to ${targetSampleRate}Hz to meet size limit`);
     }
   }
   
@@ -74,29 +77,111 @@ export const audioBufferToRawFormat = (
   const targetLength = Math.floor(buffer.length * resampleRatio);
   const dataLength = targetLength * targetChannels * bytesPerSample;
   
+  // Pre-check output size
+  const estimatedSizeBytes = 44 + dataLength; // 44 bytes for WAV header
+  const estimatedSizeMB = estimatedSizeBytes / (1024 * 1024);
+  
+  // Additional compression steps if we're still over the limit
+  let finalBitDepth = bitDepth;
+  let finalTargetSampleRate = targetSampleRate;
+  let finalTargetChannels = targetChannels;
+  let finalResampleRatio = resampleRatio;
+  
+  if (enforceLimit && estimatedSizeMB > maxSizeMB) {
+    console.log(`Estimated size ${estimatedSizeMB.toFixed(2)}MB still exceeds limit, applying more aggressive compression...`);
+    
+    // Force to mono if not already
+    if (finalTargetChannels > 1) {
+      finalTargetChannels = 1;
+      console.log('Forcing mono conversion to reduce file size');
+    }
+    
+    // Force bit depth to minimum
+    finalBitDepth = 8;
+    console.log('Using minimum bit depth (8-bit) to reduce file size');
+    
+    // Reduce sample rate more aggressively if needed
+    if (estimatedSizeMB > maxSizeMB * 1.5) {
+      if (finalTargetSampleRate > 22050) {
+        finalTargetSampleRate = 22050;
+      } else if (finalTargetSampleRate > 11025) {
+        finalTargetSampleRate = 11025;
+      } else if (finalTargetSampleRate > 8000) {
+        finalTargetSampleRate = 8000;
+      }
+      
+      finalResampleRatio = finalTargetSampleRate / sampleRate;
+      console.log(`Further reducing sample rate to ${finalTargetSampleRate}Hz to meet size limit`);
+    }
+    
+    // Recalculate data length with more aggressive settings
+    const finalTargetLength = Math.floor(buffer.length * finalResampleRatio);
+    const finalDataLength = finalTargetLength * finalTargetChannels * (finalBitDepth / 8);
+    const finalEstimatedSizeBytes = 44 + finalDataLength;
+    const finalEstimatedSizeMB = finalEstimatedSizeBytes / (1024 * 1024);
+    
+    console.log(`After aggressive compression, estimated size: ${finalEstimatedSizeMB.toFixed(2)}MB`);
+    
+    // If still over limit, we'll need to truncate the audio
+    if (enforceLimit && finalEstimatedSizeMB > maxSizeMB) {
+      const maxSamples = Math.floor((maxSizeMB * 1024 * 1024 - 44) / (finalTargetChannels * (finalBitDepth / 8)));
+      const originalDuration = buffer.duration;
+      const truncatedDuration = (maxSamples / finalTargetSampleRate);
+      const truncatedPercent = Math.round((1 - truncatedDuration / originalDuration) * 100);
+      
+      console.log(`WARNING: File will be truncated by approximately ${truncatedPercent}% to meet size limit`);
+      console.log(`Original duration: ${originalDuration.toFixed(2)}s, Truncated to: ${truncatedDuration.toFixed(2)}s`);
+    }
+  } else {
+    finalBitDepth = bitDepth;
+    finalTargetSampleRate = targetSampleRate;
+    finalTargetChannels = targetChannels;
+    finalResampleRatio = resampleRatio;
+  }
+  
+  // Recalculate parameters based on final settings
+  const finalBytesPerSample = finalBitDepth / 8;
+  const finalBlockAlign = finalTargetChannels * finalBytesPerSample;
+  const finalByteRate = finalTargetSampleRate * finalBlockAlign;
+  
+  // Calculate final target length based on bit depth, channels and sample rate limits
+  const finalTargetLength = Math.floor(buffer.length * finalResampleRatio);
+  const finalDataLength = finalTargetLength * finalTargetChannels * finalBytesPerSample;
+  
+  // Ensure we don't exceed max size - truncate if necessary
+  let actualDataLength = finalDataLength;
+  if (enforceLimit) {
+    const maxDataLength = Math.floor(maxSizeMB * 1024 * 1024) - 44; // Subtract WAV header size
+    actualDataLength = Math.min(finalDataLength, maxDataLength);
+    
+    if (actualDataLength < finalDataLength) {
+      console.log(`Audio truncated to ${((actualDataLength / finalDataLength) * 100).toFixed(0)}% of original length to meet size limit`);
+    }
+  }
+  
   // WAV header is 44 bytes
-  const arrayBuffer = new ArrayBuffer(44 + dataLength);
+  const arrayBuffer = new ArrayBuffer(44 + actualDataLength);
   const view = new DataView(arrayBuffer);
   
   // Write WAV header
   // "RIFF" chunk descriptor
   writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + dataLength, true);
+  view.setUint32(4, 36 + actualDataLength, true);
   writeString(view, 8, 'WAVE');
   
   // "fmt " sub-chunk
   writeString(view, 12, 'fmt ');
   view.setUint32(16, 16, true); // subchunk1 size (16 for PCM)
   view.setUint16(20, 1, true); // audio format (1 for PCM)
-  view.setUint16(22, targetChannels, true);
-  view.setUint32(24, targetSampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitDepth, true);
+  view.setUint16(22, finalTargetChannels, true);
+  view.setUint32(24, finalTargetSampleRate, true);
+  view.setUint32(28, finalByteRate, true);
+  view.setUint16(32, finalBlockAlign, true);
+  view.setUint16(34, finalBitDepth, true);
   
   // "data" sub-chunk
   writeString(view, 36, 'data');
-  view.setUint32(40, dataLength, true);
+  view.setUint32(40, actualDataLength, true);
   
   // Extract channel data
   const channels = [];
@@ -107,17 +192,21 @@ export const audioBufferToRawFormat = (
   let offset = 44;
   let sample;
   
+  // Calculate maximum samples we can include without exceeding the file size limit
+  const maxSamples = Math.floor(actualDataLength / (finalTargetChannels * finalBytesPerSample));
+  const samplesToProcess = Math.min(finalTargetLength, maxSamples);
+  
   // Interleave and possibly resample channels
-  for (let i = 0; i < targetLength; i++) {
+  for (let i = 0; i < samplesToProcess; i++) {
     // Source position for resampling (linear interpolation)
-    const sourcePos = i / resampleRatio;
+    const sourcePos = i / finalResampleRatio;
     const sourceIdx = Math.floor(sourcePos);
     const alpha = sourcePos - sourceIdx;
     
     // For each output channel
-    for (let channel = 0; channel < targetChannels; channel++) {
+    for (let channel = 0; channel < finalTargetChannels; channel++) {
       // If converting to mono, average all input channels
-      if (targetChannels === 1 && numChannels > 1) {
+      if (finalTargetChannels === 1 && numChannels > 1) {
         let sum = 0;
         for (let inputChannel = 0; inputChannel < numChannels; inputChannel++) {
           // Linear interpolation for resampling
@@ -149,7 +238,7 @@ export const audioBufferToRawFormat = (
       // Clamp and convert to the appropriate integer format
       sample = Math.max(-1, Math.min(1, sample));
       
-      if (bitDepth === 8) {
+      if (finalBitDepth === 8) {
         // 8-bit WAV is unsigned
         sample = (sample * 0.5 + 0.5) * 255;
         view.setUint8(offset, sample);
@@ -167,8 +256,9 @@ export const audioBufferToRawFormat = (
   const finalSizeMB = arrayBuffer.byteLength / (1024 * 1024);
   console.log(`Final WAV size: ${finalSizeMB.toFixed(2)}MB (target: ${maxSizeMB}MB)`);
   
+  // Sanity check - file should never be larger than the limit if enforcement was enabled
   if (enforceLimit && finalSizeMB > maxSizeMB) {
-    console.warn(`Warning: Even with maximum compression, the file (${finalSizeMB.toFixed(2)}MB) still exceeds the target limit (${maxSizeMB}MB).`);
+    console.error(`ERROR: File size enforcement failed! Final size: ${finalSizeMB.toFixed(2)}MB, Target: ${maxSizeMB}MB`);
   }
   
   return new Uint8Array(arrayBuffer);
