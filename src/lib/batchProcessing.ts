@@ -1,22 +1,25 @@
 
-/**
- * Batch processing utilities
- */
-
 import { addWatermark } from "./audioUtils";
 
-// Generate a unique filename
-export const generateUniqueFilename = (originalName: string): string => {
-  const timestamp = Date.now();
-  const randomString = Math.random().toString(36).substring(2, 8);
+// Generate a unique filename for processed audio files
+export const generateUniqueFilename = (originalName: string, compressionEnabled: boolean = false, noiseReductionEnabled: boolean = false): string => {
   const extension = originalName.split('.').pop();
-  return `watermarked_${timestamp}_${randomString}.${extension}`;
+  const nameWithoutExt = originalName.slice(0, -(extension?.length || 0) - 1);
+  
+  // Add suffixes based on processing applied
+  const processingSuffixes = [];
+  if (compressionEnabled) processingSuffixes.push('Compressed');
+  if (noiseReductionEnabled) processingSuffixes.push('NR');
+  
+  const suffixText = processingSuffixes.length > 0 ? '_' + processingSuffixes.join('_') : '';
+  
+  return `${nameWithoutExt}_Processed${suffixText}.${extension}`;
 };
 
-// Process multiple files with a watermark and optional compression
+// Process multiple files in a batch
 export const processBatch = async (
-  files: File[],
-  watermarkVolume: number,
+  files: File[], 
+  watermarkVolume: number, 
   watermarkInterval: number,
   progressCallback: (current: number, total: number) => void,
   compressionOptions?: {
@@ -27,47 +30,59 @@ export const processBatch = async (
     attack?: number;
     release?: number;
   },
-  maxSizeInMB: number = 16 // Default max size to 16MB
+  maxSizeInMB: number = 16,
+  noiseReductionOptions?: {
+    enabled: boolean;
+    strength?: number;
+    preservation?: number;
+  }
 ): Promise<{name: string, url: string, size: string}[]> => {
-  const results = [];
+  const results: {name: string, url: string, size: string}[] = [];
   
   for (let i = 0; i < files.length; i++) {
-    try {
-      const file = files[i];
-      console.log(`Batch processing file ${i + 1} of ${files.length}: ${file.name}`);
-      
-      progressCallback(i, files.length);
-      
-      const outputBlob = await addWatermark(
-        file,
-        watermarkVolume,
-        watermarkInterval,
-        compressionOptions,
-        maxSizeInMB
-      );
-      
-      // Get the final size after processing
-      const finalSizeMB = outputBlob.size / (1024 * 1024);
-      console.log(`Final output size: ${finalSizeMB.toFixed(2)}MB`);
-      
-      const originalName = file.name;
-      const extension = originalName.split('.').pop();
-      const nameWithoutExt = originalName.slice(0, originalName.lastIndexOf('.'));
-      const outputFilename = `${nameWithoutExt}_Watermarked${compressionOptions?.enabled ? '_Compressed' : ''}.${extension}`;
-      
-      const url = URL.createObjectURL(outputBlob);
-      
-      results.push({
-        name: outputFilename,
-        url: url,
-        size: `${finalSizeMB.toFixed(2)} MB`
-      });
-      
-    } catch (error) {
-      console.error(`Error processing file ${files[i].name}:`, error);
-    }
+    // Update progress
+    progressCallback(i, files.length);
+    
+    const file = files[i];
+    console.log(`Processing file ${i + 1} of ${files.length}: ${file.name}`);
+    
+    // Process the file with watermark and optional compression
+    const outputBlob = await addWatermark(
+      file, 
+      watermarkVolume, 
+      watermarkInterval, 
+      compressionOptions,
+      maxSizeInMB,
+      noiseReductionOptions
+    );
+    
+    // Calculate file sizes
+    const originalSize = (file.size / 1024 / 1024).toFixed(2);
+    const processedSize = (outputBlob.size / 1024 / 1024).toFixed(2);
+    const ratio = (file.size / outputBlob.size).toFixed(2);
+    const sizeInfo = `${processedSize}MB (${ratio}x)`;
+    
+    console.log(`File ${i + 1}: Original: ${originalSize}MB, Processed: ${sizeInfo}`);
+    
+    // Generate output filename
+    const outputFilename = generateUniqueFilename(
+      file.name, 
+      compressionOptions?.enabled || false,
+      noiseReductionOptions?.enabled || false
+    );
+    
+    // Create object URL for the processed file
+    const url = URL.createObjectURL(outputBlob);
+    
+    // Add to results
+    results.push({
+      name: outputFilename,
+      url: url,
+      size: sizeInfo
+    });
   }
   
+  // Final progress update
   progressCallback(files.length, files.length);
   
   return results;

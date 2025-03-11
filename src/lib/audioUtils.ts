@@ -25,7 +25,12 @@ export const addWatermark = async (
     attack?: number;
     release?: number;
   },
-  maxSizeInMB: number = 16 // Default max size to 16MB
+  maxSizeInMB: number = 16, // Default max size to 16MB
+  noiseReductionOptions?: {
+    enabled: boolean;
+    strength?: number;
+    preservation?: number;
+  }
 ): Promise<Blob> => {
   try {
     console.log("Starting audio watermarking process with database watermark file");
@@ -34,6 +39,10 @@ export const addWatermark = async (
     
     if (compressionOptions?.enabled) {
       console.log("Compression enabled:", compressionOptions);
+    }
+    
+    if (noiseReductionOptions?.enabled) {
+      console.log("Noise reduction enabled:", noiseReductionOptions);
     }
     
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -82,8 +91,14 @@ export const addWatermark = async (
     
     console.log(`Adding ${numWatermarks} watermarks at ${watermarkFrequency}s intervals`);
     
-    // Apply gentle noise reduction to watermark buffer - now more gentle
-    const watermarkBufferNR = applyGentleNoiseReduction(watermarkBuffer);
+    // Apply configurable noise reduction to watermark buffer
+    const watermarkBufferNR = noiseReductionOptions?.enabled 
+      ? applyConfigurableNoiseReduction(
+          watermarkBuffer, 
+          noiseReductionOptions.strength || 1.8, 
+          noiseReductionOptions.preservation || 0.3
+        )
+      : applyGentleNoiseReduction(watermarkBuffer);
     
     // Mix watermarks into the output buffer
     for (let i = 0; i < numWatermarks; i++) {
@@ -193,7 +208,89 @@ export const addWatermark = async (
   }
 };
 
-// New improved function for gentle noise reduction on watermark
+// New configurable noise reduction function
+function applyConfigurableNoiseReduction(
+  audioBuffer: AudioBuffer, 
+  strength: number = 1.8, // Default to moderate reduction
+  preservationFactor: number = 0.3 // Default preserve at least 30% of original
+): AudioBuffer {
+  const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const newBuffer = context.createBuffer(
+    audioBuffer.numberOfChannels,
+    audioBuffer.length,
+    audioBuffer.sampleRate
+  );
+  
+  console.log(`Applying configurable noise reduction with strength ${strength}, preservation ${preservationFactor * 100}%`);
+  
+  // For each channel
+  for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+    const inputData = audioBuffer.getChannelData(channel);
+    const outputData = newBuffer.getChannelData(channel);
+    
+    // Step 1: Analyze noise floor
+    const samples = inputData.length;
+    let sum = 0;
+    let sumOfSquares = 0;
+    
+    for (let i = 0; i < samples; i++) {
+      const sample = Math.abs(inputData[i]);
+      sum += sample;
+      sumOfSquares += sample * sample;
+    }
+    
+    const mean = sum / samples;
+    const variance = (sumOfSquares / samples) - (mean * mean);
+    const stdDeviation = Math.sqrt(variance);
+    
+    // Step 2: Calculate noise threshold with configurable strength
+    // Lower strength means less aggressive noise reduction
+    const noiseThreshold = mean + (stdDeviation * strength);
+    
+    // Step 3: Apply configurable soft thresholding
+    for (let i = 0; i < samples; i++) {
+      // Apply soft thresholding to reduce noise with configurable curve
+      const absSample = Math.abs(inputData[i]);
+      
+      if (absSample < noiseThreshold) {
+        // Use configurable noise reduction curve
+        const reductionFactor = Math.pow(absSample / noiseThreshold, strength);
+        
+        // Ensure we preserve at least the minimum percentage of original audio
+        outputData[i] = inputData[i] * (preservationFactor + ((1 - preservationFactor) * reductionFactor));
+      } else {
+        // Keep full volume for samples above threshold
+        outputData[i] = inputData[i];
+      }
+    }
+    
+    // Step 4: Apply very light smoothing to reduce artifacts if strength is high
+    if (strength > 2.0) {
+      const smoothingWindowSize = 2;
+      const tempBuffer = new Float32Array(outputData);
+      
+      for (let i = smoothingWindowSize; i < samples - smoothingWindowSize; i++) {
+        let sum = tempBuffer[i]; // Start with the center sample at full weight
+        let count = 1;
+        
+        // Add adjacent samples with lower weight
+        for (let j = 1; j <= smoothingWindowSize; j++) {
+          const weight = 0.5 / j; // Decrease weight for samples further away
+          sum += tempBuffer[i - j] * weight;
+          sum += tempBuffer[i + j] * weight;
+          count += weight * 2;
+        }
+        
+        // Average with weighted samples
+        outputData[i] = sum / count;
+      }
+    }
+  }
+  
+  return newBuffer;
+}
+
+// Existing gentle noise reduction function for backward compatibility
 function applyGentleNoiseReduction(audioBuffer: AudioBuffer): AudioBuffer {
   const context = new (window.AudioContext || (window as any).webkitAudioContext)();
   const newBuffer = context.createBuffer(
@@ -267,7 +364,7 @@ function applyGentleNoiseReduction(audioBuffer: AudioBuffer): AudioBuffer {
   return newBuffer;
 }
 
-// New function to apply noise reduction to watermark
+// Kept for compatibility
 function applyNoiseReduction(audioBuffer: AudioBuffer): AudioBuffer {
   // This function is kept for compatibility but now calls the more gentle version
   return applyGentleNoiseReduction(audioBuffer);
