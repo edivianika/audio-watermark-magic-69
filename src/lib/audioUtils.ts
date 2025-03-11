@@ -68,43 +68,60 @@ export const addWatermark = async (
       inputBuffer.sampleRate
     );
     
-    // First, copy the original audio to the output buffer at 80% volume
+    // First, copy the original audio to the output buffer at 90% volume (increased from 80%)
     for (let channel = 0; channel < numChannels; channel++) {
       const outputData = outputBuffer.getChannelData(channel);
       const inputData = inputBuffer.getChannelData(channel);
       for (let i = 0; i < outputData.length; i++) {
-        outputData[i] = inputData[i] * 0.8; // 80% volume for original audio
+        outputData[i] = inputData[i] * 0.9; // 90% volume for original audio (increased from 80%)
       }
     }
     
-    // Now add watermarks at intervals at 100% volume
+    // Now add watermarks at intervals at reduced volume with noise reduction
     const watermarkFrequency = Math.max(watermarkInterval, inputDuration / 15);
     const numWatermarks = Math.floor(inputDuration / watermarkFrequency);
     
     console.log(`Adding ${numWatermarks} watermarks at ${watermarkFrequency}s intervals`);
+    
+    // Apply noise reduction to watermark buffer
+    const watermarkBufferNR = applyNoiseReduction(watermarkBuffer);
     
     // Mix watermarks into the output buffer
     for (let i = 0; i < numWatermarks; i++) {
       const startTimeSeconds = i * watermarkFrequency;
       const startFrame = Math.floor(startTimeSeconds * outputBuffer.sampleRate);
       
-      if (startFrame + watermarkBuffer.length > outputBuffer.length) {
+      if (startFrame + watermarkBufferNR.length > outputBuffer.length) {
         continue;
       }
       
-      console.log(`Adding watermark at ${startTimeSeconds}s at full volume`);
+      // Use 70% volume for watermark (reduced from original)
+      const watermarkVolumeFactor = 0.7;
+      console.log(`Adding watermark at ${startTimeSeconds}s at ${watermarkVolumeFactor * 100}% volume`);
       
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
         const outputData = outputBuffer.getChannelData(channel);
-        const watermarkChannelIndex = Math.min(channel, watermarkBuffer.numberOfChannels - 1);
-        const watermarkData = watermarkBuffer.getChannelData(watermarkChannelIndex);
+        const watermarkChannelIndex = Math.min(channel, watermarkBufferNR.numberOfChannels - 1);
+        const watermarkData = watermarkBufferNR.getChannelData(watermarkChannelIndex);
         
-        for (let j = 0; j < watermarkBuffer.length; j++) {
+        for (let j = 0; j < watermarkBufferNR.length; j++) {
           if (startFrame + j >= outputData.length) break;
           
-          // Mix original (already at 80%) with watermark at 100%
+          // Gradually increase watermark at start and fade at end (fade in/out)
+          let volumeMultiplier = watermarkVolumeFactor;
+          const fadeLength = Math.min(4000, watermarkBufferNR.length / 10); // 4000 samples or 10% of watermark
+          
+          if (j < fadeLength) {
+            // Fade in
+            volumeMultiplier = watermarkVolumeFactor * (j / fadeLength);
+          } else if (j > watermarkBufferNR.length - fadeLength) {
+            // Fade out
+            volumeMultiplier = watermarkVolumeFactor * ((watermarkBufferNR.length - j) / fadeLength);
+          }
+          
+          // Mix original (already at 90%) with watermark at scaled volume
           const originalSample = outputData[startFrame + j];
-          const watermarkSample = watermarkData[j]; // Full volume watermark
+          const watermarkSample = watermarkData[j] * volumeMultiplier;
           
           outputData[startFrame + j] = originalSample + watermarkSample;
         }
@@ -176,3 +193,65 @@ export const addWatermark = async (
     throw error;
   }
 };
+
+// New function to apply noise reduction to watermark
+function applyNoiseReduction(audioBuffer: AudioBuffer): AudioBuffer {
+  const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const newBuffer = context.createBuffer(
+    audioBuffer.numberOfChannels,
+    audioBuffer.length,
+    audioBuffer.sampleRate
+  );
+  
+  // For each channel
+  for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+    const inputData = audioBuffer.getChannelData(channel);
+    const outputData = newBuffer.getChannelData(channel);
+    
+    // Step 1: Analyze noise floor
+    const samples = inputData.length;
+    let sum = 0;
+    let sumOfSquares = 0;
+    
+    for (let i = 0; i < samples; i++) {
+      const sample = Math.abs(inputData[i]);
+      sum += sample;
+      sumOfSquares += sample * sample;
+    }
+    
+    const mean = sum / samples;
+    const variance = (sumOfSquares / samples) - (mean * mean);
+    const stdDeviation = Math.sqrt(variance);
+    
+    // Step 2: Calculate noise threshold (typically 2-3x standard deviation)
+    const noiseThreshold = mean + (stdDeviation * 2.5);
+    
+    // Step 3: Apply soft threshold + smoothing
+    for (let i = 0; i < samples; i++) {
+      // Apply soft thresholding to reduce noise
+      const absSample = Math.abs(inputData[i]);
+      
+      if (absSample < noiseThreshold) {
+        // Reduce noise below threshold (don't remove completely for natural sound)
+        const reductionFactor = Math.pow(absSample / noiseThreshold, 1.5);
+        outputData[i] = inputData[i] * reductionFactor;
+      } else {
+        outputData[i] = inputData[i];
+      }
+    }
+    
+    // Step 4: Apply light smoothing filter to reduce remaining artifacts
+    const smoothingWindowSize = 3;
+    const tempBuffer = new Float32Array(outputData);
+    
+    for (let i = smoothingWindowSize; i < samples - smoothingWindowSize; i++) {
+      let sum = 0;
+      for (let j = -smoothingWindowSize; j <= smoothingWindowSize; j++) {
+        sum += tempBuffer[i + j];
+      }
+      outputData[i] = sum / (2 * smoothingWindowSize + 1);
+    }
+  }
+  
+  return newBuffer;
+}

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   AudioWaveform, AudioLines, Upload, ChevronDown, ChevronUp, 
-  Settings, FileText, Check, Download, Play, Pause, Wand2
+  Settings, FileText, Check, Download, Play, Pause, Wand2,
+  X, Music2, UploadCloud
 } from "lucide-react";
 import { addWatermark, generateUniqueFilename, processBatch } from "@/lib/audioUtils";
 import { Separator } from "@/components/ui/separator";
@@ -336,43 +338,46 @@ const AudioWatermarker: React.FC = () => {
   }, []);
 
   return (
-    <div className="container mx-auto py-8 max-w-4xl">
-      <div className="space-y-8">
+    <div className="container mx-auto py-4 px-4 sm:py-8 sm:max-w-4xl">
+      <div className="space-y-6">
         <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight mt-6 mb-2">Audio Watermark Magic</h1>
-          <p className="text-muted-foreground max-w-2xl mx-auto">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mt-3 mb-2 bg-gradient-to-r from-purple-600 to-blue-600 text-transparent bg-clip-text">Audio Watermark Magic</h1>
+          <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto">
             Add watermarks to your audio files with precise control over placement and compression
           </p>
         </div>
 
-        <Separator className="my-6" />
+        <Separator className="my-4" />
 
-        {/* Dropzone */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AudioWaveform className="h-5 w-5" />
+        {/* Dropzone - Now Clickable */}
+        <Card className="border-2 border-dashed hover:border-primary transition-all">
+          <CardHeader className="pb-2 pt-4">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <AudioWaveform className="h-5 w-5 text-purple-500" />
               <span>Upload Audio Files</span>
             </CardTitle>
             <CardDescription>
-              Drag and drop audio files or click to browse
+              Drag and drop audio files or click anywhere to browse
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div
               ref={dropzoneRef}
+              onClick={handleBrowseClick}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className="border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer hover:border-primary"
+              className="border-2 border-dashed rounded-lg p-6 sm:p-12 text-center transition-colors cursor-pointer hover:bg-muted/30 hover:border-primary"
             >
               <div className="flex flex-col items-center justify-center space-y-4">
-                <AudioLines className="h-12 w-12 text-muted-foreground" />
+                <div className="bg-purple-100 dark:bg-purple-900/20 p-6 rounded-full">
+                  <UploadCloud className="h-12 w-12 text-purple-500" />
+                </div>
                 <div>
-                  <p className="text-lg font-medium">
+                  <p className="text-base sm:text-lg font-medium">
                     Drop your audio files here
                   </p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs sm:text-sm text-muted-foreground">
                     Supports MP3, WAV, and other audio formats
                   </p>
                 </div>
@@ -389,44 +394,35 @@ const AudioWatermarker: React.FC = () => {
               </div>
             </div>
 
-            {/* Browse Files Button */}
-            <div className="mt-4 flex justify-center gap-2">
-              <Button 
-                onClick={handleBrowseClick}
-                disabled={isProcessing}
-                variant="outline"
-                className="gap-2"
-              >
-                <Upload className="h-4 w-4" />
-                Browse Files
-              </Button>
-              
-              {files.length > 0 && (
-                <Button
-                  onClick={clearFiles}
-                  disabled={isProcessing}
-                  variant="outline"
-                  className="gap-2"
-                >
-                  Clear Files
-                </Button>
-              )}
-            </div>
-
             {/* Selected Files */}
             {files.length > 0 && (
               <div className="mt-6">
-                <h3 className="font-medium mb-2">Selected Files ({files.length})</h3>
-                <div className="max-h-40 overflow-y-auto border rounded-md p-2">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="font-medium text-sm">Selected Files ({files.length})</h3>
+                  <Button
+                    onClick={clearFiles}
+                    disabled={isProcessing}
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 h-8"
+                  >
+                    <X className="h-3 w-3" />
+                    Clear
+                  </Button>
+                </div>
+                <div className="max-h-36 sm:max-h-40 overflow-y-auto border rounded-md p-2">
                   {files.map((file, index) => (
                     <div
                       key={index}
                       className="flex justify-between items-center py-2 px-3 odd:bg-muted/30 rounded-sm"
                     >
-                      <span className="truncate max-w-[200px] sm:max-w-xs">
-                        {file.name}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
+                      <div className="flex items-center space-x-2">
+                        <Music2 className="h-3 w-3 text-purple-500" />
+                        <span className="truncate max-w-[150px] sm:max-w-xs text-sm">
+                          {file.name}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
                         {(file.size / 1024 / 1024).toFixed(2)} MB
                       </span>
                     </div>
@@ -439,18 +435,18 @@ const AudioWatermarker: React.FC = () => {
             {processedFiles.length > 0 && (
               <div className="mt-6">
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-medium">Processed Files ({processedFiles.length})</h3>
+                  <h3 className="font-medium text-sm">Processed Files ({processedFiles.length})</h3>
                   <Button
                     onClick={downloadAllFiles}
                     variant="outline"
                     size="sm"
-                    className="gap-1"
+                    className="gap-1 h-8"
                   >
                     <Download className="h-3 w-3" />
                     Download All
                   </Button>
                 </div>
-                <div className="max-h-60 overflow-y-auto border rounded-md p-2">
+                <div className="max-h-48 sm:max-h-60 overflow-y-auto border rounded-md p-2">
                   {processedFiles.map((file, index) => (
                     <div
                       key={index}
@@ -461,26 +457,27 @@ const AudioWatermarker: React.FC = () => {
                           onClick={() => togglePlayPause(file.url, index)}
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0"
+                          className="h-6 w-6 p-0"
                         >
                           {file.isPlaying ? (
-                            <Pause className="h-4 w-4" />
+                            <Pause className="h-3 w-3" />
                           ) : (
-                            <Play className="h-4 w-4" />
+                            <Play className="h-3 w-3" />
                           )}
                         </Button>
-                        <span className="truncate max-w-[200px] sm:max-w-xs">
+                        <span className="truncate max-w-[130px] sm:max-w-xs text-sm">
                           {file.name}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground">{file.size}</span>
+                        <span className="text-xs text-muted-foreground">{file.size}</span>
                         <Button
                           onClick={() => downloadFile(file.url, file.name)}
                           variant="ghost"
                           size="sm"
+                          className="h-6 w-6 p-0"
                         >
-                          <Download className="h-4 w-4" />
+                          <Download className="h-3 w-3" />
                         </Button>
                       </div>
                     </div>
@@ -503,22 +500,22 @@ const AudioWatermarker: React.FC = () => {
         <Card>
           <CardHeader className="pb-3">
             <div className="flex justify-between items-center">
-              <CardTitle>Processing Settings</CardTitle>
+              <CardTitle className="text-lg">Processing Settings</CardTitle>
               <Button 
                 size="sm" 
                 variant="ghost" 
                 onClick={toggleSettings} 
                 className="h-8 gap-1"
               >
-                <Settings className="h-4 w-4" />
+                <Settings className="h-4 w-4 text-purple-500" />
                 {showSettings ? 
-                  <span className="flex items-center">Hide Settings <ChevronUp className="ml-1 h-4 w-4" /></span> : 
-                  <span className="flex items-center">Show Settings <ChevronDown className="ml-1 h-4 w-4" /></span>
+                  <span className="flex items-center text-xs sm:text-sm">Hide <ChevronUp className="ml-1 h-4 w-4" /></span> : 
+                  <span className="flex items-center text-xs sm:text-sm">Show <ChevronDown className="ml-1 h-4 w-4" /></span>
                 }
               </Button>
             </div>
             <CardDescription>
-              Customize watermark and compression settings for your audio
+              Customize watermark and compression settings
             </CardDescription>
           </CardHeader>
           
@@ -545,6 +542,7 @@ const AudioWatermarker: React.FC = () => {
                         value={[watermarkInterval]}
                         onValueChange={(value) => setWatermarkInterval(value[0])}
                         disabled={isProcessing}
+                        className="cursor-pointer"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
                         Set how often the watermark appears in the audio
@@ -577,6 +575,7 @@ const AudioWatermarker: React.FC = () => {
                             value={[compressionThreshold]}
                             onValueChange={(value) => setCompressionThreshold(value[0])}
                             disabled={isProcessing}
+                            className="cursor-pointer"
                           />
                           <p className="text-xs text-muted-foreground mt-1">
                             Level at which compression starts to be applied
@@ -595,6 +594,7 @@ const AudioWatermarker: React.FC = () => {
                             value={[compressionRatio]}
                             onValueChange={(value) => setCompressionRatio(value[0])}
                             disabled={isProcessing}
+                            className="cursor-pointer"
                           />
                           <p className="text-xs text-muted-foreground mt-1">
                             Amount of compression applied (higher = more compression)
@@ -613,6 +613,7 @@ const AudioWatermarker: React.FC = () => {
                             value={[compressionKnee]}
                             onValueChange={(value) => setCompressionKnee(value[0])}
                             disabled={isProcessing}
+                            className="cursor-pointer"
                           />
                           <p className="text-xs text-muted-foreground mt-1">
                             Smoothness of the compression curve
@@ -630,6 +631,7 @@ const AudioWatermarker: React.FC = () => {
                               value={[compressionAttack]}
                               onValueChange={(value) => setCompressionAttack(value[0])}
                               disabled={isProcessing}
+                              className="cursor-pointer"
                             />
                           </div>
                           
@@ -643,6 +645,7 @@ const AudioWatermarker: React.FC = () => {
                               value={[compressionRelease]}
                               onValueChange={(value) => setCompressionRelease(value[0])}
                               disabled={isProcessing}
+                              className="cursor-pointer"
                             />
                           </div>
                         </div>
@@ -680,6 +683,7 @@ const AudioWatermarker: React.FC = () => {
                         value={[maxFileSizeMB]}
                         onValueChange={(value) => setMaxFileSizeMB(value[0])}
                         disabled={isProcessing}
+                        className="cursor-pointer"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
                         Set maximum output file size. Files will be automatically compressed if they exceed this limit.
@@ -709,7 +713,7 @@ const AudioWatermarker: React.FC = () => {
             </CollapsibleContent>
           </Collapsible>
           
-          <CardFooter className="flex flex-col space-y-4">
+          <CardFooter className="flex flex-col space-y-4 p-4">
             {isProcessing && (
               <div className="w-full space-y-2">
                 <div className="flex justify-between text-sm">
@@ -720,7 +724,7 @@ const AudioWatermarker: React.FC = () => {
               </div>
             )}
             <Button 
-              className="w-full"
+              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
               onClick={processFiles}
               disabled={isProcessing || files.length === 0}
             >
