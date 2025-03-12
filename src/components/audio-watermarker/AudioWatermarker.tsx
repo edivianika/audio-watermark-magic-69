@@ -19,7 +19,7 @@ const AudioWatermarker: React.FC = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [watermarkVolume, setWatermarkVolume] = useState<number>(0.3);
-  const [watermarkInterval, setWatermarkInterval] = useState<number>(10);
+  const [watermarkInterval, setWatermarkInterval] = useState<number>(7);
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);

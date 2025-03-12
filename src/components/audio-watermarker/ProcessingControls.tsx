@@ -170,12 +170,12 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                         value={[watermarkInterval]}
                         min={5}
                         max={60}
-                        step={5}
+                        step={1}
                         onValueChange={(value) => setWatermarkInterval(value[0])}
                       />
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>5s</span>
-                        <span className="font-medium">{watermarkInterval}s (Default: 10s)</span>
+                        <span className="font-medium">{watermarkInterval}s (Default: 7s)</span>
                         <span>60s</span>
                       </div>
                     </div>
