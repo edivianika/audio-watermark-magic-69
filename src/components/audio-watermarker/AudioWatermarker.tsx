@@ -5,6 +5,10 @@ import { Separator } from "@/components/ui/separator";
 import { processBatch } from "@/lib/batchProcessing";
 import { addWatermark } from "@/lib/audioUtils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import FileUploader from "./FileUploader";
 import ProcessingControls from "./ProcessingControls";
@@ -14,25 +18,31 @@ const AudioWatermarker: React.FC = () => {
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [watermarkVolume, setWatermarkVolume] = useState(0.9);
-  const [watermarkInterval, setWatermarkInterval] = useState(10);
+  const [watermarkVolume, setWatermarkVolume] = useState<number>(0.3);
+  const [watermarkInterval, setWatermarkInterval] = useState<number>(10);
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [fileSize, setFileSize] = useState<string | null>(null);
-  const [useBatchMode, setUseBatchMode] = useState(true);
+  const [useBatchMode, setUseBatchMode] = useState<boolean>(false);
   const [processedFiles, setProcessedFiles] = useState<{name: string, url: string, size: string, isPlaying: boolean}[]>([]);
   
-  const [compressionEnabled, setCompressionEnabled] = useState(true);
-  const [compressionThreshold, setCompressionThreshold] = useState(-20);
-  const [compressionRatio, setCompressionRatio] = useState(4);
-  const [compressionKnee, setCompressionKnee] = useState(6);
-  const [compressionAttack, setCompressionAttack] = useState(0.008);
-  const [compressionRelease, setCompressionRelease] = useState(0.125);
+  const [compressionEnabled, setCompressionEnabled] = useState<boolean>(false);
+  const [compressionThreshold, setCompressionThreshold] = useState<number>(-24);
+  const [compressionKnee, setCompressionKnee] = useState<number>(30);
+  const [compressionRatio, setCompressionRatio] = useState<number>(12);
+  const [compressionAttack, setCompressionAttack] = useState<number>(0.003);
+  const [compressionRelease, setCompressionRelease] = useState<number>(0.25);
   const [settingsTab, setSettingsTab] = useState("watermark");
   
-  const [fileSizeLimitEnabled, setFileSizeLimitEnabled] = useState(true);
-  const [maxFileSizeMB, setMaxFileSizeMB] = useState(16);
+  const [fileSizeLimitEnabled, setFileSizeLimitEnabled] = useState<boolean>(true);
+  const [maxFileSizeMB, setMaxFileSizeMB] = useState<number>(10);
+
+  // Pengaturan audio untuk WhatsApp
+  const [audioChannels, setAudioChannels] = useState<'mono' | 'stereo' | 'custom'>('stereo');
+  const [audioSampleRate, setAudioSampleRate] = useState<number>(48000);
+  const [audioBitRateMode, setAudioBitRateMode] = useState<string>('Average');
+  const [audioQuality, setAudioQuality] = useState<number>(128);
 
   useEffect(() => {
     const savedFiles = localStorage.getItem('processedFiles');
@@ -81,6 +91,16 @@ const AudioWatermarker: React.FC = () => {
       enabled: fileSizeLimitEnabled,
       maxFileSizeMB: maxFileSizeMB
     };
+    
+    // Pengaturan audio untuk WhatsApp
+    const audioOptions = {
+      channels: audioChannels,
+      sampleRate: audioSampleRate,
+      bitRateMode: audioBitRateMode,
+      quality: audioQuality
+    };
+    
+    console.log("Menggunakan pengaturan audio:", audioOptions);
 
     try {
       if (useBatchMode) {
@@ -93,7 +113,8 @@ const AudioWatermarker: React.FC = () => {
             setProgress(currentProgress);
           },
           compressionOptions,
-          fileSizeOptions
+          fileSizeOptions,
+          audioOptions
         );
         
         const filesWithSize = results.map(file => {
@@ -123,7 +144,8 @@ const AudioWatermarker: React.FC = () => {
             watermarkVolume,
             watermarkInterval,
             compressionOptions,
-            { maxSizeInMB: maxFileSizeMB }
+            { maxSizeInMB: maxFileSizeMB },
+            audioOptions
           );
 
           const compressedSize = (outputBlob.size / 1024 / 1024).toFixed(2);
@@ -133,25 +155,29 @@ const AudioWatermarker: React.FC = () => {
           setFileSize(`Original: ${originalSize}MB, Processed: ${compressedSize}MB, Ratio: ${compressionRatio}x`);
 
           const originalName = file.name;
-          const extension = originalName.split('.').pop();
-          const nameWithoutExt = originalName.slice(0, -(extension?.length || 0) - 1);
-          const outputFilename = `${nameWithoutExt}_trial_version.${extension}`;
+          const nameWithoutExt = originalName.split('.')[0];
+          const outputFilename = `${nameWithoutExt}_trial_version.mp3`;
 
+          // Gunakan MIME type yang benar untuk WhatsApp
+          // WhatsApp lebih menyukai audio/mpeg daripada audio/mp3
           const url = URL.createObjectURL(outputBlob);
+          
+          const fileSizeMB = outputBlob.size / (1024 * 1024);
+          if (fileSizeMB > 16) {
+            console.warn(`Warning: File size ${fileSizeMB.toFixed(2)}MB exceeds WhatsApp limit of 16MB`);
+            toast({
+              title: "File Size Warning",
+              description: `File size (${fileSizeMB.toFixed(2)}MB) exceeds WhatsApp limit of 16MB and may not be supported.`,
+              variant: "destructive",
+            });
+          }
           
           setProcessedFiles(prev => [...prev, {
             name: outputFilename,
             url: url,
-            size: `${compressedSize} MB`,
+            size: `${compressedSize} MB${fileSizeMB > 16 ? ' (exceeds WhatsApp limit)' : ''}`,
             isPlaying: false
           }]);
-          
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = outputFilename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
         }
         
         toast({
@@ -226,6 +252,14 @@ const AudioWatermarker: React.FC = () => {
     setSettingsTab,
     showSettings,
     setShowSettings,
+    audioChannels,
+    setAudioChannels,
+    audioSampleRate,
+    setAudioSampleRate,
+    audioBitRateMode,
+    setAudioBitRateMode,
+    audioQuality,
+    setAudioQuality,
     toast
   };
   

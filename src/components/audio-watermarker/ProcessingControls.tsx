@@ -1,4 +1,3 @@
-
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -10,6 +9,9 @@ import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ProcessingControlsProps {
   isProcessing: boolean;
@@ -40,6 +42,15 @@ interface ProcessingControlsProps {
   setUseBatchMode: React.Dispatch<React.SetStateAction<boolean>>;
   settingsTab: string;
   setSettingsTab: React.Dispatch<React.SetStateAction<string>>;
+  // Audio settings
+  audioChannels: 'mono' | 'stereo' | 'custom';
+  setAudioChannels: React.Dispatch<React.SetStateAction<'mono' | 'stereo' | 'custom'>>;
+  audioSampleRate: number;
+  setAudioSampleRate: React.Dispatch<React.SetStateAction<number>>;
+  audioBitRateMode: string;
+  setAudioBitRateMode: React.Dispatch<React.SetStateAction<string>>;
+  audioQuality: number;
+  setAudioQuality: React.Dispatch<React.SetStateAction<number>>;
   toast: any; // Type for toast
 }
 
@@ -72,6 +83,15 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
   setUseBatchMode,
   settingsTab,
   setSettingsTab,
+  // Audio settings
+  audioChannels,
+  setAudioChannels,
+  audioSampleRate,
+  setAudioSampleRate,
+  audioBitRateMode,
+  setAudioBitRateMode,
+  audioQuality,
+  setAudioQuality,
   toast
 }) => {
   // Toggle settings visibility
@@ -134,29 +154,32 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
         <CollapsibleContent>
           <CardContent className="space-y-6 pt-0">
             <Tabs defaultValue="watermark" value={settingsTab} onValueChange={setSettingsTab}>
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="watermark">Watermark</TabsTrigger>
                 <TabsTrigger value="compression">Compression</TabsTrigger>
+                <TabsTrigger value="audio">Audio</TabsTrigger>
                 <TabsTrigger value="limits">File Limits</TabsTrigger>
               </TabsList>
               
-              <TabsContent value="watermark" className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <Label htmlFor="watermark-interval">Interval: {watermarkInterval} seconds</Label>
+              <TabsContent value="watermark" className="space-y-4">
+                <div className="grid gap-4">
+                  <div className="grid grid-cols-[120px_1fr] gap-4 items-center">
+                    <div className="text-sm">Interval</div>
+                    <div className="grid gap-2">
+                      <Slider
+                        value={[watermarkInterval]}
+                        min={5}
+                        max={60}
+                        step={5}
+                        onValueChange={(value) => setWatermarkInterval(value[0])}
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>5s</span>
+                        <span className="font-medium">{watermarkInterval}s (Default: 10s)</span>
+                        <span>60s</span>
+                      </div>
+                    </div>
                   </div>
-                  <Slider
-                    id="watermark-interval"
-                    min={5}
-                    max={60}
-                    step={1}
-                    value={[watermarkInterval]}
-                    onValueChange={(value) => setWatermarkInterval(value[0])}
-                    disabled={isProcessing}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Set how often the watermark appears in the audio
-                  </p>
                 </div>
               </TabsContent>
               
@@ -285,6 +308,83 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                 )}
               </TabsContent>
               
+              {/* Audio Settings Tab */}
+              <TabsContent value="audio" className="space-y-4 pt-4">
+                <div className="grid grid-cols-[120px_1fr] gap-4 items-center">
+                  <div className="text-sm">Channels</div>
+                  <div className="flex gap-4">
+                    <div className="flex items-center gap-2">
+                      <RadioGroup value={audioChannels} onValueChange={(value) => setAudioChannels(value as 'mono' | 'stereo' | 'custom')}>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="mono" id="mono" />
+                          <Label htmlFor="mono">Mono</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="stereo" id="stereo" />
+                          <Label htmlFor="stereo">Stereo</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="custom" id="custom" />
+                          <Label htmlFor="custom">Custom mapping</Label>
+                        </div>
+                      </RadioGroup>
+                      {audioChannels === 'custom' && (
+                        <Button variant="outline" size="sm">Configure</Button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="text-sm">Sample Rate</div>
+                  <Select value={audioSampleRate.toString()} onValueChange={(value) => setAudioSampleRate(parseInt(value))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select sample rate" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="44100">44100 Hz</SelectItem>
+                      <SelectItem value="48000">48000 Hz</SelectItem>
+                      <SelectItem value="96000">96000 Hz</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  <div className="text-sm">Bit Rate Mode</div>
+                  <Select value={audioBitRateMode} onValueChange={setAudioBitRateMode}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select bit rate mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Average">Average</SelectItem>
+                      <SelectItem value="Constant">Constant</SelectItem>
+                      <SelectItem value="Variable">Variable</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  <div className="text-sm">Quality</div>
+                  <Select value={audioQuality.toString()} onValueChange={(value) => setAudioQuality(parseInt(value))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select quality" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="64">64 kbps</SelectItem>
+                      <SelectItem value="96">96 kbps</SelectItem>
+                      <SelectItem value="128">128 kbps</SelectItem>
+                      <SelectItem value="192">192 kbps</SelectItem>
+                      <SelectItem value="256">256 kbps</SelectItem>
+                      <SelectItem value="320">320 kbps</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md">
+                  <p className="text-sm text-blue-800 dark:text-blue-300">
+                    <strong>Tip:</strong> Stereo mode preserves the original stereo image but results in larger files. 
+                    Mono mode reduces file size but combines all channels into one.
+                  </p>
+                  <p className="text-sm text-blue-800 dark:text-blue-300 mt-2">
+                    <strong>WhatsApp Compatibility:</strong> For best compatibility with WhatsApp, use 48000 Hz sample rate and 128 kbps quality.
+                  </p>
+                </div>
+              </TabsContent>
+              
               {/* File Limits Tab */}
               <TabsContent value="limits" className="space-y-4 pt-4">
                 <div className="flex items-center space-x-2 mb-4">
@@ -306,15 +406,17 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                       <Slider
                         id="max-file-size"
                         min={1}
-                        max={100}
+                        max={30}
                         step={1}
                         value={[maxFileSizeMB]}
                         onValueChange={(value) => setMaxFileSizeMB(value[0])}
                         disabled={isProcessing}
                       />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Output files will be compressed to stay under this limit
-                      </p>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>1 MB</span>
+                        <span className="font-medium">{maxFileSizeMB} MB (Default: 10 MB)</span>
+                        <span>30 MB</span>
+                      </div>
                     </div>
                     
                     <div className="flex justify-between text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
@@ -326,6 +428,9 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                       <p className="text-sm text-amber-800 dark:text-amber-300">
                         <strong>Note:</strong> Files will be automatically compressed (mono conversion, bitrate reduction) 
                         to stay under the specified limit while preserving audio quality.
+                      </p>
+                      <p className="text-sm text-amber-800 dark:text-amber-300 mt-2">
+                        <strong>WhatsApp Limit:</strong> WhatsApp has a 16 MB file size limit for audio files.
                       </p>
                     </div>
                   </div>
@@ -347,7 +452,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
             <p className="text-xs text-muted-foreground -mt-4">
               {useBatchMode 
                 ? "Process all files at once and provide download links"
-                : "Process files one by one with immediate download"
+                : "Process files one by one (compression disabled by default)"
               }
             </p>
           </CardContent>
@@ -373,7 +478,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
             ? "Processing..."
             : useBatchMode
               ? "Process All Files"
-              : `Add Watermark${compressionEnabled ? ' & Compress' : ''} + Download`}
+              : `Add Watermark${compressionEnabled ? ' & Compress' : ''}`}
         </Button>
       </CardFooter>
     </Card>
