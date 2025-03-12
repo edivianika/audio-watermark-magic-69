@@ -24,7 +24,7 @@ const AudioWatermarker: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [fileSize, setFileSize] = useState<string | null>(null);
-  const [useBatchMode, setUseBatchMode] = useState<boolean>(false);
+  const [useBatchMode, setUseBatchMode] = useState<boolean>(true);
   const [processedFiles, setProcessedFiles] = useState<{name: string, url: string, size: string, isPlaying: boolean}[]>([]);
   
   const [compressionEnabled, setCompressionEnabled] = useState<boolean>(false);

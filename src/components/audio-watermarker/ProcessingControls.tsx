@@ -448,12 +448,10 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                 disabled={isProcessing}
               />
               <Label htmlFor="batch-mode" className="font-medium">Batch Processing Mode</Label>
+              <span className="text-xs text-green-600 dark:text-green-400 ml-2">(Enabled by default)</span>
             </div>
-            <p className="text-xs text-muted-foreground -mt-4">
-              {useBatchMode 
-                ? "Process all files at once and provide download links"
-                : "Process files one by one (compression disabled by default)"
-              }
+            <p className="text-xs text-muted-foreground mt-1">
+              Process all files at once with the same settings. Recommended for multiple files.
             </p>
           </CardContent>
         </CollapsibleContent>
