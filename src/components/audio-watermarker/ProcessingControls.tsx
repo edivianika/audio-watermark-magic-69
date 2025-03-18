@@ -4,7 +4,7 @@ import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Settings, ChevronDown, ChevronUp, Wand2, Music } from "lucide-react";
+import { Settings, ChevronDown, ChevronUp, Wand2, Music, Play, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
@@ -24,6 +24,8 @@ interface ProcessingControlsProps {
   setShowSettings: React.Dispatch<React.SetStateAction<boolean>>;
   watermarkInterval: number;
   setWatermarkInterval: React.Dispatch<React.SetStateAction<number>>;
+  watermarkVolume: number;
+  setWatermarkVolume: React.Dispatch<React.SetStateAction<number>>;
   setCompressionEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   compressionThreshold: number;
   setCompressionThreshold: React.Dispatch<React.SetStateAction<number>>;
@@ -65,6 +67,8 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
   setShowSettings,
   watermarkInterval,
   setWatermarkInterval,
+  watermarkVolume,
+  setWatermarkVolume,
   setCompressionEnabled,
   compressionThreshold,
   setCompressionThreshold,
@@ -146,7 +150,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
           </Button>
         </div>
         <CardDescription>
-          Customize watermark and compression settings for your audio
+          
         </CardDescription>
       </CardHeader>
       
@@ -175,8 +179,25 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                       />
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>5s</span>
-                        <span className="font-medium">{watermarkInterval}s (Default: 7s)</span>
+                        <span className="font-medium">{watermarkInterval}s (Default: 5s)</span>
                         <span>60s</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[120px_1fr] gap-4 items-center">
+                    <div className="text-sm">Volume</div>
+                    <div className="grid gap-2">
+                      <Slider
+                        value={[watermarkVolume]}
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        onValueChange={(value) => setWatermarkVolume(value[0])}
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>0%</span>
+                        <span className="font-medium">{watermarkVolume * 100}%</span>
+                        <span>100%</span>
                       </div>
                     </div>
                   </div>
@@ -458,26 +479,82 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
       </Collapsible>
       
       <CardFooter className="flex flex-col space-y-4">
-        {isProcessing && (
-          <div className="w-full space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Processing...</span>
-              <span>{progress}%</span>
+        <div className="w-full">
+          <div className="flex justify-between items-center mb-2">
+            <div>
+              {/* Batch Processing Mode dipindahkan ke CardContent */}
             </div>
-            <Progress value={progress} className="w-full" />
+            <span className={`text-sm font-medium ${isProcessing ? 'text-blue-500 animate-pulse' : ''}`}>
+              {isProcessing ? `Memproses: ${progress}%` : ''}
+            </span>
           </div>
-        )}
-        <Button 
-          className="w-full"
-          onClick={processFiles}
-          disabled={isProcessing || files.length === 0}
-        >
-          {isProcessing
-            ? "Processing..."
-            : useBatchMode
-              ? "Process All Files"
-              : `Add Watermark${compressionEnabled ? ' & Compress' : ''}`}
-        </Button>
+          <p className="text-xs text-muted-foreground mb-3">
+            
+          </p>
+          
+          {isProcessing && (
+            <div className="relative mb-4">
+              <div className="h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-full transition-all duration-500 ease-in-out bg-[length:200%_100%] animate-gradient"
+                  style={{ 
+                    width: `${progress}%`,
+                    backgroundPosition: `${progress % 200}% 0`
+                  }}
+                />
+              </div>
+              
+              <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                <span className={progress >= 10 ? 'text-blue-500 font-medium' : ''}>Mengambil file</span>
+                <span className={progress >= 40 ? 'text-blue-500 font-medium' : ''}>Menambahkan watermark</span>
+                <span className={progress >= 70 ? 'text-blue-500 font-medium' : ''}>Kompresi</span>
+                <span className={progress >= 100 ? 'text-green-500 font-medium' : ''}>Selesai</span>
+              </div>
+              <div className="flex justify-between mt-1 relative">
+                <div className="w-full absolute h-0.5 bg-gray-200 dark:bg-gray-700 top-1"></div>
+                <div className={`w-4 h-4 rounded-full relative z-10 flex items-center justify-center
+                  ${progress >= 10 ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>
+                  {progress >= 10 && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                </div>
+                <div className={`w-4 h-4 rounded-full relative z-10 flex items-center justify-center transition-colors duration-300
+                  ${progress >= 40 ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>
+                  {progress >= 40 && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                </div>
+                <div className={`w-4 h-4 rounded-full relative z-10 flex items-center justify-center transition-colors duration-300
+                  ${progress >= 70 ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>
+                  {progress >= 70 && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                </div>
+                <div className={`w-4 h-4 rounded-full relative z-10 flex items-center justify-center transition-colors duration-300
+                  ${progress >= 100 ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>
+                  {progress >= 100 && <div className="w-2 h-2 bg-white rounded-full animate-ping"></div>}
+                </div>
+              </div>
+            </div>
+          )}
+        
+          <Button 
+            className="w-full flex items-center justify-center gap-2" 
+            size="lg"
+            onClick={processFiles}
+            disabled={isProcessing || files.length === 0}
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Memproses...</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-5 h-5" />
+                <span>
+                  {useBatchMode 
+                    ? "Process All Files" 
+                    : "Process File"}
+                </span>
+              </>
+            )}
+          </Button>
+        </div>
       </CardFooter>
     </Card>
   );

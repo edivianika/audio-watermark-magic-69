@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,7 +69,11 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         return file;
       });
       
-      setFiles(filesWithSize);
+      setFiles(prevFiles => [...prevFiles, ...filesWithSize]);
+
+      if (e.target) {
+        e.target.value = '';
+      }
     }
   };
 
@@ -137,7 +140,13 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         }
       }
       
-      setFiles(filteredFiles);
+      const filesWithSize = filteredFiles.map(file => {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        console.log(`Original file size: ${sizeMB} MB`);
+        return file;
+      });
+      
+      setFiles(prevFiles => [...prevFiles, ...filesWithSize]);
     }
   }, [toast, fileSizeLimitEnabled, maxFileSizeMB, setFiles]);
 

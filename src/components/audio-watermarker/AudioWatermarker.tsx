@@ -18,8 +18,8 @@ const AudioWatermarker: React.FC = () => {
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [watermarkVolume, setWatermarkVolume] = useState<number>(0.3);
-  const [watermarkInterval, setWatermarkInterval] = useState<number>(7);
+  const [watermarkVolume, setWatermarkVolume] = useState<number>(0.5);
+  const [watermarkInterval, setWatermarkInterval] = useState<number>(5);
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -44,22 +44,17 @@ const AudioWatermarker: React.FC = () => {
   const [audioBitRateMode, setAudioBitRateMode] = useState<string>('Average');
   const [audioQuality, setAudioQuality] = useState<number>(128);
 
-  useEffect(() => {
-    const savedFiles = localStorage.getItem('processedFiles');
-    if (savedFiles) {
-      try {
-        setProcessedFiles(JSON.parse(savedFiles));
-      } catch (e) {
-        console.error('Error parsing saved files:', e);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (processedFiles.length > 0) {
-      localStorage.setItem('processedFiles', JSON.stringify(processedFiles));
-    }
-  }, [processedFiles]);
+  const clearFiles = () => {
+    setFiles([]);
+    setFileSize(null);
+  };
+  
+  const clearProcessedFiles = () => {
+    processedFiles.forEach(file => {
+      URL.revokeObjectURL(file.url);
+    });
+    setProcessedFiles([]);
+  };
 
   const processFiles = async () => {
     if (files.length === 0) {
@@ -130,6 +125,9 @@ const AudioWatermarker: React.FC = () => {
           title: "Batch Processing Complete",
           description: `Successfully processed ${results.length} file(s) with watermark${compressionEnabled ? ' and compression' : ''}`,
         });
+        
+        // Bersihkan daftar file setelah proses selesai
+        clearFiles();
       } else {
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
@@ -184,6 +182,9 @@ const AudioWatermarker: React.FC = () => {
           title: "Processing Complete",
           description: `Successfully processed ${files.length} file(s)`,
         });
+
+        // Bersihkan daftar file setelah proses selesai
+        clearFiles();
       }
 
       setProgress(100);
@@ -199,19 +200,6 @@ const AudioWatermarker: React.FC = () => {
     }
   };
 
-  const clearFiles = () => {
-    setFiles([]);
-    setFileSize(null);
-  };
-  
-  const clearProcessedFiles = () => {
-    processedFiles.forEach(file => {
-      URL.revokeObjectURL(file.url);
-    });
-    setProcessedFiles([]);
-    localStorage.removeItem('processedFiles');
-  };
-  
   const fileUploaderProps = {
     files,
     setFiles,
@@ -230,6 +218,8 @@ const AudioWatermarker: React.FC = () => {
     files,
     watermarkInterval,
     setWatermarkInterval,
+    watermarkVolume,
+    setWatermarkVolume,
     compressionEnabled,
     setCompressionEnabled,
     compressionThreshold,
