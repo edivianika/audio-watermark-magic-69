@@ -269,6 +269,35 @@ const AudioWatermarker: React.FC = () => {
     clearProcessedFiles
   };
 
+  const handleFilesSelected = (selectedFiles: File[]) => {
+    // Validasi file
+    const validFiles = selectedFiles.filter(file => {
+      const isValidType = file.type.startsWith('audio/');
+      const isValidSize = file.size <= 16 * 1024 * 1024; // 16MB limit
+      
+      if (!isValidType) {
+        toast({
+          title: "File tidak valid",
+          description: `File ${file.name} bukan file audio yang valid`,
+          variant: "destructive",
+        });
+      }
+      
+      if (!isValidSize) {
+        toast({
+          title: "File terlalu besar",
+          description: `File ${file.name} melebihi batas 16MB`,
+          variant: "destructive",
+        });
+      }
+      
+      return isValidType && isValidSize;
+    });
+
+    // Tambahkan file baru ke daftar file yang sudah ada
+    setFiles(prevFiles => [...prevFiles, ...validFiles]);
+  };
+
   return (
     <div className="container mx-auto py-2 max-w-4xl">
       <div className="space-y-6">
