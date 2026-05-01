@@ -3,9 +3,36 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AudioLines, Upload, AlertCircle, Check } from "lucide-react";
+import { AudioLines, Upload, Check } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+
+/** Browsers often leave `File.type` empty; Storage + DB still need a sensible MIME. */
+function resolveAudioContentType(file: File): string {
+  const t = file.type?.trim();
+  if (t) return t;
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  const byExt: Record<string, string> = {
+    mp3: "audio/mpeg",
+    wav: "audio/wav",
+    wave: "audio/wav",
+    m4a: "audio/mp4",
+    aac: "audio/aac",
+    ogg: "audio/ogg",
+    flac: "audio/flac",
+    webm: "audio/webm",
+  };
+  return (ext && byExt[ext]) || "audio/mpeg";
+}
+
+function storageObjectPath(file: File): string {
+  const timestamp = Date.now();
+  const ext =
+    file.name.includes(".") &&
+    (file.name.split(".").pop()?.replace(/[^\w\d]/g, "").slice(0, 10) || "audio");
+  const safeExt = ext || "bin";
+  return `watermarks/watermark_${timestamp}.${safeExt}`;
+}
 
 const WatermarkManager: React.FC = () => {
   const { toast } = useToast();
@@ -43,7 +70,10 @@ const WatermarkManager: React.FC = () => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
       
-      if (!file.type.startsWith('audio/')) {
+      const looksAudio =
+        file.type.startsWith("audio/") ||
+        /\.(mp3|wav|m4a|aac|ogg|flac|webm|opus)$/i.test(file.name);
+      if (!looksAudio) {
         toast({
           title: "Invalid File",
           description: "Please select an audio file (MP3, WAV, etc.)",
@@ -69,34 +99,38 @@ const WatermarkManager: React.FC = () => {
     setIsUploading(true);
 
     try {
-      // Generate a unique file path
-      const timestamp = Date.now();
-      const extension = watermarkFile.name.split('.').pop();
-      const filePath = `watermark_${timestamp}.${extension}`;
+      const filePath = storageObjectPath(watermarkFile);
+      const contentType = resolveAudioContentType(watermarkFile);
 
-      // Upload to Storage
-      const { data: storageData, error: storageError } = await supabase.storage
-        .from('audio')
+      // Upload to Storage (unique path → no upsert / avoids extra UPDATE RLS edge cases)
+      const { error: storageError } = await supabase.storage
+        .from("audio")
         .upload(filePath, watermarkFile, {
-          upsert: true,
-          contentType: watermarkFile.type
+          upsert: false,
+          contentType,
+          cacheControl: "3600",
         });
 
       if (storageError) {
-        throw new Error(`Storage error: ${JSON.stringify(storageError)}`);
+        const detail = [storageError.message, storageError.cause]
+          .filter(Boolean)
+          .join(" ");
+        throw new Error(
+          detail
+            ? `Storage: ${detail}`
+            : `Storage: ${JSON.stringify(storageError)}`,
+        );
       }
 
       // Save metadata to database
-      const { error: dbError } = await supabase
-        .from('watermark_audio')
-        .insert({
-          filename: watermarkFile.name,
-          storage_path: filePath,
-          content_type: watermarkFile.type
-        });
+      const { error: dbError } = await supabase.from("watermark_audio").insert({
+        filename: watermarkFile.name,
+        storage_path: filePath,
+        content_type: contentType,
+      });
 
       if (dbError) {
-        throw new Error(`Database error: ${dbError.message}`);
+        throw new Error(`Database: ${dbError.message}${dbError.hint ? ` (${dbError.hint})` : ""}`);
       }
 
       toast({
@@ -111,9 +145,11 @@ const WatermarkManager: React.FC = () => {
       setWatermarkFile(null);
     } catch (error) {
       console.error("Error uploading watermark:", error);
+      const message =
+        error instanceof Error ? error.message : "Upload failed unexpectedly.";
       toast({
         title: "Upload Failed",
-        description: error.message,
+        description: message,
         variant: "destructive",
       });
     } finally {
