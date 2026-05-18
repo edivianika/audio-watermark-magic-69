@@ -6,7 +6,10 @@
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAudioFile } from "./formatConversion";
 
-// Fetch watermark audio from Supabase storage or use a fallback
+/** Bundled default watermark (`public/indom.mp3`, served at site root). */
+const DEFAULT_WATERMARK_URL = `${import.meta.env.BASE_URL}indom.mp3`;
+
+// Fetch watermark audio from Supabase storage or use bundled default
 export const fetchWatermarkAudio = async (): Promise<File> => {
   try {
     console.log('Fetching watermark from Supabase storage');
@@ -62,18 +65,18 @@ export const fetchWatermarkAudio = async (): Promise<File> => {
   }
 };
 
-// Fetch a default watermark from a public URL
+// Default watermark for processing (public/indom.mp3)
 export const fetchDefaultWatermark = async (): Promise<File> => {
   try {
-    console.log('Fetching default watermark from URL');
-    const response = await fetch('https://assets.mixkit.co/active_storage/sfx/212/212-preview.mp3');
-    
+    console.log("Loading default watermark:", DEFAULT_WATERMARK_URL);
+    const response = await fetch(DEFAULT_WATERMARK_URL);
+
     if (!response.ok) {
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
-    
+
     const arrayBuffer = await response.arrayBuffer();
-    return new File([arrayBuffer], 'watermark.mp3', { type: 'audio/mpeg' });
+    return new File([arrayBuffer], "indom.mp3", { type: "audio/mpeg" });
   } catch (error) {
     console.error('Error fetching default watermark:', error);
     

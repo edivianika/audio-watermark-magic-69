@@ -1,15 +1,10 @@
 // Prefer Vite env in production; fallbacks keep local/dev working without .env
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
+import { getViteSupabaseKey, getViteSupabaseUrl } from '@/lib/supabaseEnv';
 
-const envUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
-const envKey =
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
-  import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
-
-const SUPABASE_URL = envUrl || 'https://srwepolmyazwppjnemuy.supabase.co';
-const SUPABASE_KEY =
-  envKey || 'sb_publishable_nM5fH3-J_9CZadQoVNrCgA_oB_cweJC';
+const SUPABASE_URL = getViteSupabaseUrl();
+const SUPABASE_KEY = getViteSupabaseKey();
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";

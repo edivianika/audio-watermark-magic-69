@@ -3,9 +3,24 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AudioLines, Upload, Check } from "lucide-react";
+import { AudioLines, Upload, Check, WifiOff } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  formatPostgrestError,
+  formatStorageError,
+  getViteSupabaseUrl,
+  userFacingSupabaseNetworkHint,
+} from "@/lib/supabaseEnv";
+
+/** Safe for DB: strip controls, limit length (Postgres text is fine; keeps UI sane). */
+function sanitizeFilename(name: string): string {
+  return name
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim()
+    .slice(0, 240);
+}
 
 /** Browsers often leave `File.type` empty; Storage + DB still need a sensible MIME. */
 function resolveAudioContentType(file: File): string {
@@ -39,6 +54,7 @@ const WatermarkManager: React.FC = () => {
   const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
   const [currentWatermark, setCurrentWatermark] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [connectivityHint, setConnectivityHint] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCurrentWatermark();
@@ -47,22 +63,27 @@ const WatermarkManager: React.FC = () => {
   const fetchCurrentWatermark = async () => {
     try {
       const { data, error } = await supabase
-        .from('watermark_audio')
-        .select('*')
-        .order('created_at', { ascending: false })
+        .from("watermark_audio")
+        .select("*")
+        .order("created_at", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error("Error fetching watermark:", error);
+        const hint = userFacingSupabaseNetworkHint(error.message);
+        setConnectivityHint(hint);
         return;
       }
 
+      setConnectivityHint(null);
       if (data) {
         setCurrentWatermark(data.filename);
       }
     } catch (error) {
       console.error("Error in fetchCurrentWatermark:", error);
+      const msg = error instanceof Error ? error.message : String(error);
+      setConnectivityHint(userFacingSupabaseNetworkHint(msg));
     }
   };
 
@@ -108,29 +129,25 @@ const WatermarkManager: React.FC = () => {
         .upload(filePath, watermarkFile, {
           upsert: false,
           contentType,
-          cacheControl: "3600",
         });
 
       if (storageError) {
-        const detail = [storageError.message, storageError.cause]
-          .filter(Boolean)
-          .join(" ");
-        throw new Error(
-          detail
-            ? `Storage: ${detail}`
-            : `Storage: ${JSON.stringify(storageError)}`,
-        );
+        throw new Error(`Storage: ${formatStorageError(storageError)}`);
       }
+
+      const safeName = sanitizeFilename(watermarkFile.name) || "watermark.mp3";
 
       // Save metadata to database
       const { error: dbError } = await supabase.from("watermark_audio").insert({
-        filename: watermarkFile.name,
+        filename: safeName,
         storage_path: filePath,
         content_type: contentType,
       });
 
       if (dbError) {
-        throw new Error(`Database: ${dbError.message}${dbError.hint ? ` (${dbError.hint})` : ""}`);
+        // Avoid orphan objects in Storage so the user can retry cleanly
+        await supabase.storage.from("audio").remove([filePath]);
+        throw new Error(`Database: ${formatPostgrestError(dbError)}`);
       }
 
       toast({
@@ -145,11 +162,13 @@ const WatermarkManager: React.FC = () => {
       setWatermarkFile(null);
     } catch (error) {
       console.error("Error uploading watermark:", error);
-      const message =
+      const raw =
         error instanceof Error ? error.message : "Upload failed unexpectedly.";
+      const hint = userFacingSupabaseNetworkHint(raw);
+      if (hint) setConnectivityHint(hint);
       toast({
         title: "Upload Failed",
-        description: message,
+        description: hint ?? raw,
         variant: "destructive",
       });
     } finally {
@@ -169,6 +188,16 @@ const WatermarkManager: React.FC = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {connectivityHint && (
+          <Alert variant="destructive">
+            <WifiOff className="h-4 w-4" />
+            <AlertTitle>Koneksi ke Supabase gagal</AlertTitle>
+            <AlertDescription>{connectivityHint}</AlertDescription>
+          </Alert>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Host API: <span className="font-mono break-all">{getViteSupabaseUrl()}</span>
+        </p>
         {currentWatermark && (
           <div className="p-3 bg-muted rounded-md flex items-center justify-between">
             <div className="flex items-center space-x-2">
