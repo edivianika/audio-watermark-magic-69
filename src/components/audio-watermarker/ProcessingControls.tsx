@@ -1,23 +1,26 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Settings, ChevronDown, ChevronUp, Wand2, Music, Play, Loader2 } from "lucide-react";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Loader2, Settings, ChevronDown, ChevronUp, Wand2, Music } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { useToast } from "@/components/ui/use-toast";
+
+type ToastFn = ReturnType<typeof useToast>["toast"];
 
 interface ProcessingControlsProps {
   isProcessing: boolean;
   progress: number;
-  processFiles: () => Promise<void>;
-  files: File[];
+  processingStatus: {
+    current: number;
+    total: number;
+  };
   useBatchMode: boolean;
   compressionEnabled: boolean;
   showSettings: boolean;
@@ -53,14 +56,13 @@ interface ProcessingControlsProps {
   setAudioBitRateMode: React.Dispatch<React.SetStateAction<string>>;
   audioQuality: number;
   setAudioQuality: React.Dispatch<React.SetStateAction<number>>;
-  toast: any; // Type for toast
+  toast: ToastFn;
 }
 
 const ProcessingControls: React.FC<ProcessingControlsProps> = ({
   isProcessing,
   progress,
-  processFiles,
-  files,
+  processingStatus,
   useBatchMode,
   compressionEnabled,
   showSettings,
@@ -102,7 +104,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
   const toggleSettings = () => {
     setShowSettings(!showSettings);
   };
-  
+
   // Apply the custom natural compression preset
   const applyNaturalCompressionPreset = () => {
     setCompressionThreshold(-20); // -20dB threshold as specified
@@ -110,13 +112,13 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
     setCompressionKnee(6);        // 6dB knee as specified
     setCompressionAttack(0.008);  // 8ms attack time (in 5-10ms range)
     setCompressionRelease(0.125); // 125ms release time (in 100-150ms range)
-    
+
     toast({
       title: "Natural Compression Applied",
       description: "Applied natural-sounding compression preset that preserves dynamics",
     });
   };
-  
+
   // Reset to the new default values
   const resetToDefaultValues = () => {
     setCompressionThreshold(-20);
@@ -124,50 +126,44 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
     setCompressionKnee(6);
     setCompressionAttack(0.008);
     setCompressionRelease(0.125);
-    
+
     toast({
       title: "Default Settings Applied",
       description: "Reset compression settings to default values",
     });
   };
-  
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex justify-between items-center">
-          <CardTitle>Processing Settings</CardTitle>
-          <Button 
-            size="sm" 
-            variant="ghost" 
-            onClick={toggleSettings} 
-            className="h-8 gap-1"
-          >
-            <Settings className="h-4 w-4" />
-            {showSettings ? 
-              <span className="flex items-center">Hide Settings <ChevronUp className="ml-1 h-4 w-4" /></span> : 
-              <span className="flex items-center">Show Settings <ChevronDown className="ml-1 h-4 w-4" /></span>
-            }
-          </Button>
-        </div>
-        <CardDescription>
-          
-        </CardDescription>
-      </CardHeader>
-      
+    <Card className="border-0 bg-transparent shadow-none">
+      <div className="mb-2 flex justify-end">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={toggleSettings}
+          className="h-8 shrink-0 gap-1 px-2 text-xs sm:px-3 sm:text-sm"
+        >
+          <Settings className="h-4 w-4" />
+          {showSettings ?
+            <span className="flex items-center">Settings <ChevronUp className="ml-1 h-4 w-4" /></span> :
+            <span className="flex items-center">Settings <ChevronDown className="ml-1 h-4 w-4" /></span>
+          }
+        </Button>
+      </div>
+
       <Collapsible open={showSettings} onOpenChange={setShowSettings}>
         <CollapsibleContent>
-          <CardContent className="space-y-6 pt-0">
+          <CardContent className="space-y-4 p-0 pb-3 sm:space-y-6">
             <Tabs defaultValue="watermark" value={settingsTab} onValueChange={setSettingsTab}>
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="watermark">Watermark</TabsTrigger>
-                <TabsTrigger value="compression">Compression</TabsTrigger>
+              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
+                <TabsTrigger value="watermark" className="text-xs sm:text-sm">Mark</TabsTrigger>
+                <TabsTrigger value="compression" className="text-xs sm:text-sm">Compress</TabsTrigger>
                 <TabsTrigger value="audio">Audio</TabsTrigger>
-                <TabsTrigger value="limits">File Limits</TabsTrigger>
+                <TabsTrigger value="limits" className="text-xs sm:text-sm">Limits</TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="watermark" className="space-y-4">
                 <div className="grid gap-4">
-                  <div className="grid grid-cols-[120px_1fr] gap-4 items-center">
+                  <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center sm:gap-4">
                     <div className="text-sm">Interval</div>
                     <div className="grid gap-2">
                       <Slider
@@ -184,7 +180,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                       </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-[120px_1fr] gap-4 items-center">
+                  <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center sm:gap-4">
                     <div className="text-sm">Volume</div>
                     <div className="grid gap-2">
                       <Slider
@@ -203,7 +199,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                   </div>
                 </div>
               </TabsContent>
-              
+
               <TabsContent value="compression" className="space-y-4 pt-4">
                 <div className="flex items-center space-x-2 mb-4">
                   <Switch
@@ -214,7 +210,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                   />
                   <Label htmlFor="compression-toggle" className="font-medium">Enable Audio Compression</Label>
                 </div>
-                
+
                 {compressionEnabled && (
                   <div className="space-y-6 pt-2">
                     <div className="space-y-2">
@@ -234,7 +230,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                         Level at which compression starts to be applied
                       </p>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
                         <Label htmlFor="compression-ratio">Ratio: {compressionRatio}:1</Label>
@@ -252,7 +248,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                         Amount of compression applied (higher = more compression)
                       </p>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
                         <Label htmlFor="compression-knee">Knee: {compressionKnee} dB</Label>
@@ -270,8 +266,8 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                         Smoothness of the compression curve
                       </p>
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
+
+                    <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label htmlFor="compression-attack">Attack: {(compressionAttack * 1000).toFixed(0)} ms</Label>
                         <Slider
@@ -284,7 +280,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                           disabled={isProcessing}
                         />
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="compression-release">Release: {(compressionRelease * 1000).toFixed(0)} ms</Label>
                         <Slider
@@ -298,9 +294,9 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                         />
                       </div>
                     </div>
-                    
+
                     <div className="flex flex-col gap-2">
-                      <Button 
+                      <Button
                         variant="outline"
                         size="sm"
                         className="w-full gap-2"
@@ -310,8 +306,8 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                         <Wand2 className="h-4 w-4" />
                         Reset to Default Values
                       </Button>
-                      
-                      <Button 
+
+                      <Button
                         variant="outline"
                         size="sm"
                         className="w-full gap-2"
@@ -328,13 +324,13 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                   </div>
                 )}
               </TabsContent>
-              
+
               {/* Audio Settings Tab */}
               <TabsContent value="audio" className="space-y-4 pt-4">
-                <div className="grid grid-cols-[120px_1fr] gap-4 items-center">
+                <div className="grid gap-3 sm:grid-cols-[120px_1fr] sm:items-center sm:gap-4">
                   <div className="text-sm">Channels</div>
                   <div className="flex gap-4">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <RadioGroup value={audioChannels} onValueChange={(value) => setAudioChannels(value as 'mono' | 'stereo' | 'custom')}>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="mono" id="mono" />
@@ -354,7 +350,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                       )}
                     </div>
                   </div>
-                  
+
                   <div className="text-sm">Sample Rate</div>
                   <Select value={audioSampleRate.toString()} onValueChange={(value) => setAudioSampleRate(parseInt(value))}>
                     <SelectTrigger>
@@ -366,7 +362,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                       <SelectItem value="96000">96000 Hz</SelectItem>
                     </SelectContent>
                   </Select>
-                  
+
                   <div className="text-sm">Bit Rate Mode</div>
                   <Select value={audioBitRateMode} onValueChange={setAudioBitRateMode}>
                     <SelectTrigger>
@@ -378,7 +374,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                       <SelectItem value="Variable">Variable</SelectItem>
                     </SelectContent>
                   </Select>
-                  
+
                   <div className="text-sm">Quality</div>
                   <Select value={audioQuality.toString()} onValueChange={(value) => setAudioQuality(parseInt(value))}>
                     <SelectTrigger>
@@ -394,18 +390,18 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
-                
-                <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md">
-                  <p className="text-sm text-blue-800 dark:text-blue-300">
-                    <strong>Tip:</strong> Stereo mode preserves the original stereo image but results in larger files. 
+
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
+                  <p className="text-xs text-blue-800 sm:text-sm dark:text-blue-300">
+                    <strong>Tip:</strong> Stereo mode preserves the original stereo image but results in larger files.
                     Mono mode reduces file size but combines all channels into one.
                   </p>
-                  <p className="text-sm text-blue-800 dark:text-blue-300 mt-2">
+                  <p className="mt-2 text-xs text-blue-800 sm:text-sm dark:text-blue-300">
                     <strong>WhatsApp Compatibility:</strong> For best compatibility with WhatsApp, use 48000 Hz sample rate and 128 kbps quality.
                   </p>
                 </div>
               </TabsContent>
-              
+
               {/* File Limits Tab */}
               <TabsContent value="limits" className="space-y-4 pt-4">
                 <div className="flex items-center space-x-2 mb-4">
@@ -417,7 +413,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                   />
                   <Label htmlFor="file-size-limit-toggle" className="font-medium">Enable File Size Limit</Label>
                 </div>
-                
+
                 {fileSizeLimitEnabled && (
                   <div className="space-y-4 pt-2">
                     <div className="space-y-2">
@@ -439,18 +435,18 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                         <span>30 MB</span>
                       </div>
                     </div>
-                    
+
                     <div className="flex justify-between text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
                       <span>Current setting:</span>
                       <span>{fileSizeLimitEnabled ? `${maxFileSizeMB} MB limit` : "No limit"}</span>
                     </div>
-                    
-                    <div className="p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md">
-                      <p className="text-sm text-amber-800 dark:text-amber-300">
-                        <strong>Note:</strong> Files will be automatically compressed (mono conversion, bitrate reduction) 
+
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
+                      <p className="text-xs text-amber-800 sm:text-sm dark:text-amber-300">
+                        <strong>Note:</strong> Files will be automatically compressed (mono conversion, bitrate reduction)
                         to stay under the specified limit while preserving audio quality.
                       </p>
-                      <p className="text-sm text-amber-800 dark:text-amber-300 mt-2">
+                      <p className="mt-2 text-xs text-amber-800 sm:text-sm dark:text-amber-300">
                         <strong>WhatsApp Limit:</strong> WhatsApp has a 16 MB file size limit for audio files.
                       </p>
                     </div>
@@ -458,10 +454,10 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                 )}
               </TabsContent>
             </Tabs>
-            
+
             <Separator />
-            
-            <div className="flex items-center space-x-2">
+
+            <div className="flex items-center gap-2">
               <Switch
                 id="batch-mode"
                 checked={useBatchMode}
@@ -469,7 +465,7 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
                 disabled={isProcessing}
               />
               <Label htmlFor="batch-mode" className="font-medium">Batch Processing Mode</Label>
-              <span className="text-xs text-green-600 dark:text-green-400 ml-2">(Enabled by default)</span>
+              <span className="ml-auto text-xs text-green-600 dark:text-green-400">Default</span>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Process all files at once with the same settings. Recommended for multiple files.
@@ -477,38 +473,43 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
           </CardContent>
         </CollapsibleContent>
       </Collapsible>
-      
-      <CardFooter className="flex flex-col space-y-4">
+
+      <CardFooter className="flex flex-col space-y-4 p-0">
         <div className="w-full">
-          <div className="flex justify-between items-center mb-2">
-            <div>
-              {/* Batch Processing Mode dipindahkan ke CardContent */}
+          {isProcessing && (
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-slate-300 bg-white/50 px-3 py-2 dark:border-gray-700 dark:bg-muted/20">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
+                  <span className="absolute h-full w-full rounded-full bg-blue-500/20 animate-ping" />
+                  <Loader2 className="relative h-4 w-4 animate-spin text-blue-500" />
+                </span>
+                <span className="truncate text-sm font-medium">
+                  Progres {processingStatus.current || 1} dari {processingStatus.total || 1}
+                </span>
+              </div>
+              <span className="shrink-0 text-sm font-semibold text-blue-600 dark:text-blue-400">
+                {progress}%
+              </span>
             </div>
-            <span className={`text-sm font-medium ${isProcessing ? 'text-blue-500 animate-pulse' : ''}`}>
-              {isProcessing ? `Memproses: ${progress}%` : ''}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground mb-3">
-            
-          </p>
-          
+          )}
+
           {isProcessing && (
             <div className="relative mb-4">
               <div className="h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-full transition-all duration-500 ease-in-out bg-[length:200%_100%] animate-gradient"
-                  style={{ 
+                  style={{
                     width: `${progress}%`,
                     backgroundPosition: `${progress % 200}% 0`
                   }}
                 />
               </div>
-              
-              <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-                <span className={progress >= 10 ? 'text-blue-500 font-medium' : ''}>Mengambil file</span>
-                <span className={progress >= 40 ? 'text-blue-500 font-medium' : ''}>Menambahkan watermark</span>
-                <span className={progress >= 70 ? 'text-blue-500 font-medium' : ''}>Kompresi</span>
-                <span className={progress >= 100 ? 'text-green-500 font-medium' : ''}>Selesai</span>
+
+              <div className="mt-1 grid grid-cols-4 gap-1 text-center text-[10px] text-muted-foreground sm:text-xs">
+                <span className={progress >= 10 ? 'text-blue-500 font-medium' : ''}>File</span>
+                <span className={progress >= 40 ? 'text-blue-500 font-medium' : ''}>Mark</span>
+                <span className={progress >= 70 ? 'text-blue-500 font-medium' : ''}>Compress</span>
+                <span className={progress >= 100 ? 'text-green-500 font-medium' : ''}>Done</span>
               </div>
               <div className="flex justify-between mt-1 relative">
                 <div className="w-full absolute h-0.5 bg-gray-200 dark:bg-gray-700 top-1"></div>
@@ -531,29 +532,6 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
               </div>
             </div>
           )}
-        
-          <Button 
-            className="w-full flex items-center justify-center gap-2" 
-            size="lg"
-            onClick={processFiles}
-            disabled={isProcessing || files.length === 0}
-          >
-            {isProcessing ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Memproses...</span>
-              </>
-            ) : (
-              <>
-                <Play className="w-5 h-5" />
-                <span>
-                  {useBatchMode 
-                    ? "Process All Files" 
-                    : "Process File"}
-                </span>
-              </>
-            )}
-          </Button>
         </div>
       </CardFooter>
     </Card>

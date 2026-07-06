@@ -7,6 +7,7 @@ import { AudioLines, Upload, Check, WifiOff } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
+import { AUDIO_FILE_ACCEPT, isLikelyAudioFile } from "@/lib/audioFileTypes";
 import {
   formatPostgrestError,
   formatStorageError,
@@ -17,7 +18,12 @@ import {
 /** Safe for DB: strip controls, limit length (Postgres text is fine; keeps UI sane). */
 function sanitizeFilename(name: string): string {
   return name
-    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .split("")
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return code > 31 && code !== 127;
+    })
+    .join("")
     .trim()
     .slice(0, 240);
 }
@@ -91,10 +97,7 @@ const WatermarkManager: React.FC = () => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
       
-      const looksAudio =
-        file.type.startsWith("audio/") ||
-        /\.(mp3|wav|m4a|aac|ogg|flac|webm|opus)$/i.test(file.name);
-      if (!looksAudio) {
+      if (!isLikelyAudioFile(file)) {
         toast({
           title: "Invalid File",
           description: "Please select an audio file (MP3, WAV, etc.)",
@@ -177,17 +180,17 @@ const WatermarkManager: React.FC = () => {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <Card className="border-border/70 bg-card/70 shadow-none">
+      <CardHeader className="space-y-1 p-4 sm:p-6">
+        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
           <AudioLines className="h-5 w-5" />
-          <span>Watermark Management</span>
+          <span>Watermark</span>
         </CardTitle>
-        <CardDescription>
-          Upload a custom audio watermark to use in your audio files
+        <CardDescription className="text-xs sm:text-sm">
+          Upload custom audio watermark
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
         {connectivityHint && (
           <Alert variant="destructive">
             <WifiOff className="h-4 w-4" />
@@ -199,10 +202,10 @@ const WatermarkManager: React.FC = () => {
           Host API: <span className="font-mono break-all">{getViteSupabaseUrl()}</span>
         </p>
         {currentWatermark && (
-          <div className="p-3 bg-muted rounded-md flex items-center justify-between">
-            <div className="flex items-center space-x-2">
+          <div className="flex items-center justify-between rounded-md bg-muted p-3">
+            <div className="flex min-w-0 items-center space-x-2">
               <Check className="h-4 w-4 text-green-500" />
-              <span className="text-sm font-medium">Current watermark: {currentWatermark}</span>
+              <span className="truncate text-sm font-medium">Current: {currentWatermark}</span>
             </div>
           </div>
         )}
@@ -214,7 +217,7 @@ const WatermarkManager: React.FC = () => {
           <Input
             id="watermark-upload"
             type="file"
-            accept="audio/*"
+            accept={AUDIO_FILE_ACCEPT}
             onChange={handleFileChange}
             disabled={isUploading}
             className="cursor-pointer"
@@ -225,18 +228,18 @@ const WatermarkManager: React.FC = () => {
         </div>
 
         {watermarkFile && (
-          <div className="p-3 bg-muted rounded-md flex items-center justify-between">
-            <div className="flex items-center space-x-2">
+          <div className="flex items-center justify-between gap-3 rounded-md bg-muted p-3">
+            <div className="flex min-w-0 items-center space-x-2">
               <AudioLines className="h-4 w-4" />
-              <span className="text-sm">{watermarkFile.name}</span>
+              <span className="truncate text-sm">{watermarkFile.name}</span>
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className="shrink-0 text-xs text-muted-foreground">
               {(watermarkFile.size / 1024 / 1024).toFixed(2)} MB
             </span>
           </div>
         )}
       </CardContent>
-      <CardFooter>
+      <CardFooter className="p-4 pt-0 sm:p-6 sm:pt-0">
         <Button 
           onClick={uploadWatermark}
           disabled={!watermarkFile || isUploading}

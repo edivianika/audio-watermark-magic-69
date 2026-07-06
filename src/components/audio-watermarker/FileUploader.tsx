@@ -1,26 +1,28 @@
-import React, { useState, useRef, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import React, { useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AudioWaveform, AudioLines, Upload, FileText } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { Card, CardContent } from "@/components/ui/card";
+import { AudioLines, FileText } from "lucide-react";
+import type { useToast } from "@/components/ui/use-toast";
+import { AUDIO_FILE_ACCEPT, isLikelyAudioFile } from "@/lib/audioFileTypes";
+
+type ToastFn = ReturnType<typeof useToast>["toast"];
 
 interface FileUploaderProps {
   files: File[];
   setFiles: React.Dispatch<React.SetStateAction<File[]>>;
-  isProcessing: boolean;
-  clearFiles: () => void;
+  onFilesAccepted: (files: File[]) => void;
+  queuedCount: number;
   fileSizeLimitEnabled: boolean;
   maxFileSizeMB: number;
-  toast: any; // Type for toast
+  toast: ToastFn;
   fileSize?: string | null;
 }
 
 const FileUploader: React.FC<FileUploaderProps> = ({
   files,
   setFiles,
-  isProcessing,
-  clearFiles,
+  onFilesAccepted,
+  queuedCount,
   fileSizeLimitEnabled,
   maxFileSizeMB,
   toast,
@@ -29,12 +31,10 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   const dropzoneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const filesArray = Array.from(e.target.files);
-      const audioFiles = filesArray.filter(file => 
-        file.type.startsWith('audio/') || file.name.endsWith('.mp3') || file.name.endsWith('.wav')
-      );
+  const acceptFiles = useCallback((selectedFiles: FileList | File[]) => {
+    const filesArray = Array.from(selectedFiles);
+    if (filesArray.length > 0) {
+      const audioFiles = filesArray.filter(isLikelyAudioFile);
       
       if (audioFiles.length < filesArray.length) {
         toast({
@@ -70,7 +70,13 @@ const FileUploader: React.FC<FileUploaderProps> = ({
       });
       
       setFiles(prevFiles => [...prevFiles, ...filesWithSize]);
+      onFilesAccepted(filesWithSize);
+    }
+  }, [fileSizeLimitEnabled, maxFileSizeMB, onFilesAccepted, setFiles, toast]);
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      acceptFiles(e.target.files);
       if (e.target) {
         e.target.value = '';
       }
@@ -108,76 +114,29 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     }
     
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const filesArray = Array.from(e.dataTransfer.files);
-      const audioFiles = filesArray.filter(file => 
-        file.type.startsWith('audio/') || file.name.endsWith('.mp3') || file.name.endsWith('.wav')
-      );
-      
-      if (audioFiles.length < filesArray.length) {
-        toast({
-          title: "Invalid Files",
-          description: "Some files were skipped because they aren't audio files",
-          variant: "destructive",
-        });
-      }
-      
-      let filteredFiles = audioFiles;
-      if (fileSizeLimitEnabled) {
-        const oversizedFiles = audioFiles.filter(file => 
-          (file.size / (1024 * 1024)) > maxFileSizeMB
-        );
-        
-        if (oversizedFiles.length > 0) {
-          toast({
-            title: "Files Exceeding Size Limit",
-            description: `${oversizedFiles.length} file(s) exceed the ${maxFileSizeMB}MB limit and were skipped`,
-            variant: "destructive",
-          });
-          
-          filteredFiles = audioFiles.filter(file => 
-            (file.size / (1024 * 1024)) <= maxFileSizeMB
-          );
-        }
-      }
-      
-      const filesWithSize = filteredFiles.map(file => {
-        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-        console.log(`Original file size: ${sizeMB} MB`);
-        return file;
-      });
-      
-      setFiles(prevFiles => [...prevFiles, ...filesWithSize]);
+      acceptFiles(e.dataTransfer.files);
     }
-  }, [toast, fileSizeLimitEnabled, maxFileSizeMB, setFiles]);
+  }, [acceptFiles]);
 
   return (
-    <Card className="dark:border-gray-700">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <AudioWaveform className="h-5 w-5" />
-          <span>Upload Audio Files</span>
-        </CardTitle>
-        <CardDescription>
-          Drag and drop audio files or click to browse
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <Card className="border-0 bg-transparent shadow-none">
+      <CardContent className="p-0">
         <div
           ref={dropzoneRef}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={handleBrowseClick}
-          className="border-2 border-dashed rounded-lg p-8 md:p-12 text-center transition-colors cursor-pointer hover:border-primary dark:border-gray-700 dark:hover:border-gray-500"
+          className="rounded-md border border-dashed border-slate-300 bg-white/60 p-5 text-center transition-colors cursor-pointer hover:border-slate-500 sm:p-10 dark:border-gray-700 dark:bg-transparent dark:hover:border-gray-500"
         >
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <AudioLines className="h-12 w-12 text-muted-foreground" />
+          <div className="flex flex-col items-center justify-center space-y-3">
+            <AudioLines className="h-9 w-9 text-muted-foreground sm:h-12 sm:w-12" />
             <div>
-              <p className="text-lg font-medium">
-                Drop your audio files here
+              <p className="text-base font-medium sm:text-lg">
+                Tap to choose audio
               </p>
-              <p className="text-sm text-muted-foreground">
-                Supports MP3, WAV, and other audio formats
+              <p className="text-xs text-muted-foreground sm:text-sm">
+                MP3, WAV, M4A, AAC, OGG, FLAC
               </p>
             </div>
             <Input
@@ -185,56 +144,38 @@ const FileUploader: React.FC<FileUploaderProps> = ({
               ref={fileInputRef}
               type="file"
               multiple
-              accept="audio/*"
+              accept={AUDIO_FILE_ACCEPT}
               className="hidden"
               onChange={handleFileSelect}
-              disabled={isProcessing}
             />
           </div>
         </div>
 
-        <div className="mt-4 flex justify-center gap-2">
-          <Button 
-            onClick={handleBrowseClick}
-            disabled={isProcessing}
-            variant="outline"
-            className="gap-2"
-          >
-            <Upload className="h-4 w-4" />
-            Browse Files
-          </Button>
-          
-          {files.length > 0 && (
-            <Button
-              onClick={clearFiles}
-              disabled={isProcessing}
-              variant="outline"
-              className="gap-2"
-            >
-              Clear Files
-            </Button>
-          )}
-        </div>
-
         {files.length > 0 && (
-          <div className="mt-6">
-            <h3 className="font-medium mb-2">Selected Files ({files.length})</h3>
-            <div className="max-h-40 overflow-y-auto border rounded-md p-2 dark:border-gray-700">
+          <div className="mt-3">
+            <h3 className="mb-2 text-sm font-medium">Selected ({files.length})</h3>
+            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 bg-white/50 p-1 dark:border-gray-700 dark:bg-transparent">
               {files.map((file, index) => (
                 <div
                   key={index}
-                  className="flex justify-between items-center py-2 px-3 odd:bg-muted/30 rounded-sm"
+                  className="flex items-center justify-between gap-3 rounded-sm px-2 py-2 odd:bg-muted/30"
                 >
-                  <span className="truncate max-w-[200px] sm:max-w-xs">
+                  <span className="min-w-0 flex-1 truncate text-sm">
                     {file.name}
                   </span>
-                  <span className="text-sm text-muted-foreground">
+                  <span className="shrink-0 text-xs text-muted-foreground">
                     {(file.size / 1024 / 1024).toFixed(2)} MB
                   </span>
                 </div>
               ))}
             </div>
           </div>
+        )}
+
+        {queuedCount > 0 && (
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            {queuedCount} file{queuedCount === 1 ? "" : "s"} queued
+          </p>
         )}
         
         {fileSize && (
