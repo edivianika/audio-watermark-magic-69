@@ -127,7 +127,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={handleBrowseClick}
-          className="rounded-md border border-dashed border-slate-300 bg-white/60 p-5 text-center transition-colors cursor-pointer hover:border-slate-500 sm:p-10 dark:border-gray-700 dark:bg-transparent dark:hover:border-gray-500"
+          className="flex min-h-[220px] items-center justify-center rounded-md border border-dashed border-slate-300 bg-white/60 p-5 text-center transition-colors cursor-pointer hover:border-slate-500 sm:min-h-0 sm:p-10 dark:border-gray-700 dark:bg-transparent dark:hover:border-gray-500"
         >
           <div className="flex flex-col items-center justify-center space-y-3">
             <AudioLines className="h-9 w-9 text-muted-foreground sm:h-12 sm:w-12" />
