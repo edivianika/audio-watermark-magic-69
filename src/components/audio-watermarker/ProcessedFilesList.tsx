@@ -12,12 +12,14 @@ interface ProcessedFilesListProps {
     isPlaying: boolean;
   }[]>>;
   clearProcessedFiles?: () => void;
+  idPrefix?: string;
 }
 
 const ProcessedFilesList: React.FC<ProcessedFilesListProps> = ({
   processedFiles,
   setProcessedFiles,
-  clearProcessedFiles
+  clearProcessedFiles,
+  idPrefix = "audio"
 }) => {
   const processedFilesRef = useRef(processedFiles);
 
@@ -43,14 +45,14 @@ const ProcessedFilesList: React.FC<ProcessedFilesListProps> = ({
       newFiles.forEach((file, i) => {
         if (i !== index && file.isPlaying) {
           file.isPlaying = false;
-          const audio = document.getElementById(`audio-${i}`) as HTMLAudioElement;
+          const audio = document.getElementById(`${idPrefix}-${i}`) as HTMLAudioElement;
           if (audio) audio.pause();
         }
       });
 
       // Toggle the selected audio
       newFiles[index].isPlaying = !newFiles[index].isPlaying;
-      const audio = document.getElementById(`audio-${index}`) as HTMLAudioElement;
+      const audio = document.getElementById(`${idPrefix}-${index}`) as HTMLAudioElement;
       if (audio) {
         if (newFiles[index].isPlaying) {
           audio.play().catch(error => {
@@ -71,14 +73,14 @@ const ProcessedFilesList: React.FC<ProcessedFilesListProps> = ({
     return () => {
       // Cleanup audio elements when component unmounts
       processedFilesRef.current.forEach((_, index) => {
-        const audio = document.getElementById(`audio-${index}`) as HTMLAudioElement;
+        const audio = document.getElementById(`${idPrefix}-${index}`) as HTMLAudioElement;
         if (audio) {
           audio.pause();
           audio.src = "";
         }
       });
     };
-  }, []);
+  }, [idPrefix]);
 
   if (processedFiles.length === 0) {
     return null;
@@ -156,7 +158,7 @@ const ProcessedFilesList: React.FC<ProcessedFilesListProps> = ({
                 </div>
               </div>
               <audio
-                id={`audio-${originalIndex}`}
+                id={`${idPrefix}-${originalIndex}`}
                 src={file.url}
                 onEnded={() => {
                   setProcessedFiles(prev => {

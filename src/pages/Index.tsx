@@ -1,9 +1,10 @@
 
 import AudioWatermarker from "@/components/audio-watermarker";
 import WatermarkManager from "@/components/WatermarkManager";
+import VocalSplitter from "@/components/vocal-splitter/VocalSplitter";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Moon, Sun } from "lucide-react";
+import { Mic2, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const Index = () => {
@@ -25,12 +26,16 @@ const Index = () => {
     <div className="mx-auto min-h-screen w-full max-w-4xl px-3 py-3 sm:px-6 sm:py-6">
       <Tabs defaultValue="watermarker" className="space-y-3 sm:space-y-6">
         <div className="grid grid-cols-[1fr_auto] gap-2">
-          <TabsList className="grid h-10 w-full grid-cols-2 rounded-md bg-muted/60 p-1">
+          <TabsList className="grid h-10 w-full grid-cols-3 rounded-md bg-muted/60 p-1">
             <TabsTrigger value="watermarker" className="h-8 text-xs sm:text-sm">
               Compress
             </TabsTrigger>
             <TabsTrigger value="manage" className="h-8 text-xs sm:text-sm">
               Watermark
+            </TabsTrigger>
+            <TabsTrigger value="split" className="h-8 gap-1 text-xs sm:text-sm">
+              <Mic2 className="h-3.5 w-3.5" />
+              Split Vocal
             </TabsTrigger>
           </TabsList>
           <Button
@@ -53,6 +58,9 @@ const Index = () => {
         </TabsContent>
         <TabsContent value="manage">
           <WatermarkManager />
+        </TabsContent>
+        <TabsContent value="split">
+          <VocalSplitter />
         </TabsContent>
       </Tabs>
     </div>
