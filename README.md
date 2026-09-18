@@ -78,7 +78,7 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 
 Set `VITE_SEPARATION_API_URL=http://127.0.0.1:8000` in the frontend environment. The first Demucs run downloads the selected model; use Docker with `backend/Dockerfile` for a reproducible deployment.
 
-Set `DEMUCS_DEVICE=cpu` when a deployment has no GPU/MPS device. If unset, Demucs automatically selects the best available device. Change `DEMUCS_MP3_BITRATE` to `96`, `128`, or `160` to trade file size against quality.
+Set `DEMUCS_DEVICE=cpu` when a deployment has no GPU/MPS device. The deployment defaults to the lighter quantized `mdx_q` model with `DEMUCS_SEGMENT=1` to keep CPU/memory usage practical on Render free tier. Change `DEMUCS_MODEL` and `DEMUCS_SEGMENT` only when the service has enough memory. Change `DEMUCS_MP3_BITRATE` to `96`, `128`, or `160` to trade file size against quality.
 
 ## Deployment
 

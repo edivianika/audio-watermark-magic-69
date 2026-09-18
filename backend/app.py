@@ -21,8 +21,9 @@ from fastapi.responses import FileResponse
 STORAGE_DIR = Path(os.getenv("SEPARATION_STORAGE_DIR", tempfile.gettempdir())) / "indo-separation"
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
-MODEL = os.getenv("DEMUCS_MODEL", "htdemucs")
+MODEL = os.getenv("DEMUCS_MODEL", "mdx_q")
 DEVICE = os.getenv("DEMUCS_DEVICE")
+SEGMENT = os.getenv("DEMUCS_SEGMENT", "1")
 MP3_BITRATE = int(os.getenv("DEMUCS_MP3_BITRATE", "128"))
 MP3_PRESET = int(os.getenv("DEMUCS_MP3_PRESET", "7"))
 MAX_UPLOAD_MB = int(os.getenv("SEPARATION_MAX_UPLOAD_MB", "50"))
@@ -151,7 +152,15 @@ def process_job(job_id: str, input_path: Path, output_dir: Path, job_dir: Path) 
         # explicitly for a predictable CPU-only deployment.
         if DEVICE:
             command[6:6] = ["--device", DEVICE]
-        command.extend(["--mp3", "--mp3-bitrate", str(MP3_BITRATE), "--mp3-preset", str(MP3_PRESET)])
+        command.extend([
+            "--segment",
+            SEGMENT,
+            "--mp3",
+            "--mp3-bitrate",
+            str(MP3_BITRATE),
+            "--mp3-preset",
+            str(MP3_PRESET),
+        ])
         completed = subprocess.run(
             command,
             capture_output=True,
