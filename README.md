@@ -64,6 +64,22 @@ This project is built with .
 
 Simply open [Lovable](https://lovable.dev/projects/3cf64d30-c7f8-4f71-b9c9-2543244d0a93) and click on Share -> Publish.
 
+## AI vocal separation backend
+
+The `Split Vocal` tab uses a small Python service backed by Demucs. It returns MP3 stems at 128 kbps by default, which keeps downloads much smaller than WAV while preserving convenient preview quality. Start it locally with Python 3.11+:
+
+```sh
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Set `VITE_SEPARATION_API_URL=http://127.0.0.1:8000` in the frontend environment. The first Demucs run downloads the selected model; use Docker with `backend/Dockerfile` for a reproducible deployment.
+
+Set `DEMUCS_DEVICE=cpu` when a deployment has no GPU/MPS device. If unset, Demucs automatically selects the best available device. Change `DEMUCS_MP3_BITRATE` to `96`, `128`, or `160` to trade file size against quality.
+
 ## I want to use a custom domain - is that possible?
 
 We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)

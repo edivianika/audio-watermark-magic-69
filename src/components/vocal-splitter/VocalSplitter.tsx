@@ -44,20 +44,20 @@ const VocalSplitter: React.FC = () => {
         const result = await splitStereoAudio(file);
         const baseName = file.name.replace(/\.[^/.]+$/, "");
         const vocalOutput = {
-          name: `${baseName}_vocal.wav`,
+          name: `${baseName}_vocal.${result.format}`,
           url: URL.createObjectURL(result.vocal),
           size: formatSize(result.vocal.size),
           isPlaying: false,
         };
         const instrumentalOutput = {
-          name: `${baseName}_instrumental.wav`,
+          name: `${baseName}_instrumental.${result.format}`,
           url: URL.createObjectURL(result.instrumental),
           size: formatSize(result.instrumental.size),
           isPlaying: false,
         };
 
         setOutputs((current) => [...current, vocalOutput, instrumentalOutput]);
-        setFileSize(`Durasi: ${Math.round(result.duration)} detik · WAV 16-bit · Stereo center/side`);
+        setFileSize(`AI Demucs · ${result.format.toUpperCase()} ${result.bitrate ? `${result.bitrate} kbps` : ""} · Model: ${result.model}`);
         setProgress(Math.round(((index + 1) / filesToProcess.length) * 100));
       }
 
@@ -109,9 +109,9 @@ const VocalSplitter: React.FC = () => {
               </div>
               <div>
                 <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-violet-600 dark:text-violet-300">Stem Lab</p>
-                <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Pisahkan vocal & instrumental</h1>
+                <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Pisahkan vocal & instrumental dengan AI</h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Buat dua stem WAV dari track stereo langsung di browser. Tidak ada file yang diunggah ke server.
+                  Buat dua stem audio menggunakan Demucs melalui service separation yang dikonfigurasi untuk aplikasi ini.
                 </p>
               </div>
             </div>
@@ -120,11 +120,11 @@ const VocalSplitter: React.FC = () => {
           <div className="grid gap-3 border-b border-border/70 p-5 sm:grid-cols-2 sm:p-8">
             <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium"><Mic2 className="h-4 w-4 text-violet-500" /> Vocal</div>
-              <p className="text-xs leading-5 text-muted-foreground">Mengambil sinyal tengah (L + R), tempat vokal utama biasanya berada.</p>
+              <p className="text-xs leading-5 text-muted-foreground">Model AI mengisolasi vokal dari mix, termasuk vokal yang tidak berada persis di tengah.</p>
             </div>
             <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium"><Music2 className="h-4 w-4 text-cyan-600" /> Instrumental</div>
-              <p className="text-xs leading-5 text-muted-foreground">Mengambil sinyal sisi stereo (L − R) untuk mengurangi vokal tengah.</p>
+              <p className="text-xs leading-5 text-muted-foreground">Accompaniment hasil pemisahan AI: musik tanpa stem vocal utama.</p>
             </div>
           </div>
         </CardContent>
@@ -155,7 +155,7 @@ const VocalSplitter: React.FC = () => {
 
       <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs leading-5 text-muted-foreground">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-        <p><span className="font-medium text-foreground">Catatan:</span> hasil paling bersih didapat dari stereo mix dengan vokal di posisi tengah. Ini adalah ekstraksi center/side lokal, bukan pemisahan AI, jadi instrumen yang juga berada di tengah dapat ikut terdengar pada stem vocal.</p>
+        <p><span className="font-medium text-foreground">Catatan:</span> Demucs membutuhkan backend aktif di <code className="rounded bg-amber-500/10 px-1">VITE_SEPARATION_API_URL</code>. Proses AI lebih lambat daripada center/side, tetapi hasilnya jauh lebih sesuai untuk vocal remover.</p>
       </div>
     </div>
   );

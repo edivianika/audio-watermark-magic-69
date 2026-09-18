@@ -1,60 +1,64 @@
-import { encodeWAV, loadAudioFile } from "./audioCore";
-
-declare global {
-  interface Window {
-    webkitAudioContext?: typeof AudioContext;
-  }
-}
-
 export type SplitAudioResult = {
   vocal: Blob;
   instrumental: Blob;
-  duration: number;
+  model: string;
+  format: "mp3" | "wav";
+  bitrate?: string;
 };
 
-/**
- * Creates quick vocal/instrumental previews using stereo center/side extraction.
- * Center (L + R) generally contains vocals; side (L - R) generally contains
- * stereo instruments. This is intentionally local and lightweight, not an AI
- * stem separator, so results depend on how the original track was mixed.
- */
+type SeparationResponse = {
+  vocals_url: string;
+  instrumental_url: string;
+  model: string;
+  format: "mp3" | "wav";
+  bitrate?: string;
+};
+
+/** Send the source to the configured Demucs service and retrieve both stems. */
 export const splitStereoAudio = async (file: File): Promise<SplitAudioResult> => {
-  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+  const apiUrl = (import.meta.env.VITE_SEPARATION_API_URL || window.location.origin).replace(/\/+$/, "");
+  const formData = new FormData();
+  formData.append("file", file);
 
-  if (!AudioContextConstructor) {
-    throw new Error("Browser ini tidak mendukung pemrosesan audio.");
-  }
-
-  const audioContext = new AudioContextConstructor();
-
+  let response: Response;
   try {
-    const sourceBuffer = await loadAudioFile(audioContext, file);
-
-    if (sourceBuffer.numberOfChannels < 2) {
-      throw new Error("File harus stereo. Pisahkan vokal dari track dengan minimal 2 channel.");
-    }
-
-    const left = sourceBuffer.getChannelData(0);
-    const right = sourceBuffer.getChannelData(1);
-    const vocalBuffer = audioContext.createBuffer(1, sourceBuffer.length, sourceBuffer.sampleRate);
-    const instrumentalBuffer = audioContext.createBuffer(1, sourceBuffer.length, sourceBuffer.sampleRate);
-    const vocal = vocalBuffer.getChannelData(0);
-    const instrumental = instrumentalBuffer.getChannelData(0);
-
-    for (let index = 0; index < sourceBuffer.length; index += 1) {
-      // Mid/side extraction. Keep each stem inside the valid Web Audio range.
-      vocal[index] = clamp((left[index] + right[index]) * 0.5);
-      instrumental[index] = clamp((left[index] - right[index]) * 0.5);
-    }
-
-    return {
-      vocal: new Blob([encodeWAV(vocalBuffer, 16)], { type: "audio/wav" }),
-      instrumental: new Blob([encodeWAV(instrumentalBuffer, 16)], { type: "audio/wav" }),
-      duration: sourceBuffer.duration,
-    };
-  } finally {
-    await audioContext.close();
+    response = await fetch(`${apiUrl}/api/separate`, {
+      method: "POST",
+      body: formData,
+    });
+  } catch {
+    throw new Error(`Service AI tidak dapat dihubungi. Jalankan backend Demucs di ${apiUrl}.`);
   }
-};
 
-const clamp = (sample: number) => Math.max(-1, Math.min(1, sample));
+  const responseText = await response.text();
+  let payload: SeparationResponse | { detail?: string } | null = null;
+  try {
+    payload = JSON.parse(responseText) as SeparationResponse | { detail?: string };
+  } catch {
+    // Reverse proxies can return an HTML/text error instead of JSON.
+  }
+
+  if (!response.ok || !payload || !("vocals_url" in payload) || !("instrumental_url" in payload) || !("format" in payload)) {
+    const detail = payload && "detail" in payload ? payload.detail : responseText.slice(0, 240).trim();
+    throw new Error(`API separation ${response.status}: ${detail || "Service AI gagal memisahkan audio."}`);
+  }
+
+  const vocalUrl = new URL(payload.vocals_url, apiUrl).toString();
+  const instrumentalUrl = new URL(payload.instrumental_url, apiUrl).toString();
+  const [vocalResponse, instrumentalResponse] = await Promise.all([
+    fetch(vocalUrl),
+    fetch(instrumentalUrl),
+  ]);
+
+  if (!vocalResponse.ok || !instrumentalResponse.ok) {
+    const failedStem = vocalResponse.ok ? "instrumental" : "vocal";
+    throw new Error(`Stem ${payload.model} berhasil dibuat, tetapi file ${failedStem} tidak dapat diunduh (HTTP ${(vocalResponse.ok ? instrumentalResponse : vocalResponse).status}).`);
+  }
+
+  const [vocal, instrumental] = await Promise.all([
+    vocalResponse.blob(),
+    instrumentalResponse.blob(),
+  ]);
+
+  return { vocal, instrumental, model: payload.model, format: payload.format, bitrate: payload.bitrate };
+};
