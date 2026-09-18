@@ -14,9 +14,12 @@ type SeparationResponse = {
   bitrate?: string;
 };
 
+const DEFAULT_PRODUCTION_API_URL = "https://indo-audio-separation-api.onrender.com";
+
 /** Send the source to the configured Demucs service and retrieve both stems. */
 export const splitStereoAudio = async (file: File): Promise<SplitAudioResult> => {
-  const apiUrl = (import.meta.env.VITE_SEPARATION_API_URL || window.location.origin).replace(/\/+$/, "");
+  const configuredApiUrl = import.meta.env.VITE_SEPARATION_API_URL;
+  const apiUrl = (configuredApiUrl || (import.meta.env.PROD ? DEFAULT_PRODUCTION_API_URL : window.location.origin)).replace(/\/+$/, "");
   const formData = new FormData();
   formData.append("file", file);
 
