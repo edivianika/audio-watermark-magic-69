@@ -24,6 +24,8 @@ STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 MODEL = os.getenv("DEMUCS_MODEL", "mdx_q")
 DEVICE = os.getenv("DEMUCS_DEVICE")
 SEGMENT = os.getenv("DEMUCS_SEGMENT", "1")
+ENGINE = os.getenv("SEPARATION_ENGINE", "ffmpeg_center").strip().lower()
+OUTPUT_KEY = MODEL if ENGINE == "demucs" else "stems"
 MP3_BITRATE = int(os.getenv("DEMUCS_MP3_BITRATE", "128"))
 MP3_PRESET = int(os.getenv("DEMUCS_MP3_PRESET", "7"))
 MAX_UPLOAD_MB = int(os.getenv("SEPARATION_MAX_UPLOAD_MB", "50"))
@@ -57,7 +59,7 @@ app.add_middleware(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "model": MODEL}
+    return {"status": "ok", "engine": ENGINE, "model": MODEL}
 
 
 @app.post("/api/separate")
@@ -115,7 +117,7 @@ def download_stem(job_id: str, stem_name: str) -> FileResponse:
     if not JOB_ID_PATTERN.fullmatch(job_id) or stem_name not in {"vocals.mp3", "instrumental.mp3"}:
         raise HTTPException(status_code=404, detail="File tidak ditemukan.")
 
-    model_dir = STORAGE_DIR / job_id / "output" / MODEL / "source"
+    model_dir = STORAGE_DIR / job_id / "output" / OUTPUT_KEY / "source"
     source_name = "vocals.mp3" if stem_name == "vocals.mp3" else "no_vocals.mp3"
     path = model_dir / source_name
     if not path.is_file():
@@ -137,65 +139,133 @@ def save_upload(file: UploadFile, destination: Path) -> None:
 def process_job(job_id: str, input_path: Path, output_dir: Path, job_dir: Path) -> None:
     set_job_status(job_id, "processing")
     try:
-        command = [
-            sys.executable,
-            "-m",
-            "demucs.separate",
-            "--two-stems=vocals",
-            "--name",
-            MODEL,
-            "--out",
-            str(output_dir),
-            str(input_path),
-        ]
-        # Let Demucs auto-select MPS/CUDA when available. Set DEMUCS_DEVICE=cpu
-        # explicitly for a predictable CPU-only deployment.
-        if DEVICE:
-            command[6:6] = ["--device", DEVICE]
-        command.extend([
-            "--segment",
-            SEGMENT,
-            "--mp3",
-            "--mp3-bitrate",
-            str(MP3_BITRATE),
-            "--mp3-preset",
-            str(MP3_PRESET),
-        ])
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=MAX_PROCESS_SECONDS,
-            check=False,
-        )
-        if completed.returncode != 0:
-            error_tail = (completed.stderr or completed.stdout or "Demucs gagal memproses audio.")[-1200:]
-            set_job_status(job_id, "failed", detail=error_tail)
-            shutil.rmtree(job_dir, ignore_errors=True)
-            return
+        if ENGINE == "demucs":
+            run_demucs(input_path, output_dir)
+            stems_dir = output_dir / MODEL / "source"
+        else:
+            run_center_side_separation(input_path, output_dir)
+            stems_dir = output_dir / "stems" / "source"
 
-        vocals_path = output_dir / MODEL / "source" / "vocals.mp3"
-        instrumental_path = output_dir / MODEL / "source" / "no_vocals.mp3"
+        vocals_path = stems_dir / "vocals.mp3"
+        instrumental_path = stems_dir / "no_vocals.mp3"
         if not vocals_path.is_file() or not instrumental_path.is_file():
-            set_job_status(job_id, "failed", detail="Demucs selesai tetapi stem output tidak ditemukan.")
+            set_job_status(job_id, "failed", detail="Pemisahan selesai tetapi stem output tidak ditemukan.")
             shutil.rmtree(job_dir, ignore_errors=True)
             return
 
         set_job_status(
             job_id,
             "complete",
-            model=MODEL,
+            model=ENGINE,
             format="mp3",
             bitrate=str(MP3_BITRATE),
             vocals_url=f"/api/files/{job_id}/vocals.mp3",
             instrumental_url=f"/api/files/{job_id}/instrumental.mp3",
         )
     except subprocess.TimeoutExpired:
-        set_job_status(job_id, "failed", detail="Proses AI melewati batas waktu 30 menit.")
+        set_job_status(job_id, "failed", detail="Proses pemisahan melewati batas waktu 30 menit.")
         shutil.rmtree(job_dir, ignore_errors=True)
     except Exception as exc:
         set_job_status(job_id, "failed", detail=str(exc))
         shutil.rmtree(job_dir, ignore_errors=True)
+
+
+def run_demucs(input_path: Path, output_dir: Path) -> None:
+    command = [
+        sys.executable,
+        "-m",
+        "demucs.separate",
+        "--two-stems=vocals",
+        "--name",
+        MODEL,
+        "--out",
+        str(output_dir),
+        str(input_path),
+    ]
+    # Let Demucs auto-select MPS/CUDA when available. Set DEMUCS_DEVICE=cpu
+    # explicitly for a predictable CPU-only deployment.
+    if DEVICE:
+        command[6:6] = ["--device", DEVICE]
+    command.extend([
+        "--segment",
+        SEGMENT,
+        "--mp3",
+        "--mp3-bitrate",
+        str(MP3_BITRATE),
+        "--mp3-preset",
+        str(MP3_PRESET),
+    ])
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=MAX_PROCESS_SECONDS,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "Demucs gagal memproses audio.")[-1200:]
+        raise RuntimeError(detail)
+
+
+def run_center_side_separation(input_path: Path, output_dir: Path) -> None:
+    source_dir = output_dir / "stems" / "source"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    stereo_path = input_path.parent / "stereo.wav"
+    run_ffmpeg(
+        [
+            "-y",
+            "-i",
+            str(input_path),
+            "-ac",
+            "2",
+            "-ar",
+            "44100",
+            "-c:a",
+            "pcm_s16le",
+            str(stereo_path),
+        ]
+    )
+    run_ffmpeg(
+        [
+            "-y",
+            "-i",
+            str(stereo_path),
+            "-af",
+            "pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1",
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            f"{MP3_BITRATE}k",
+            str(source_dir / "vocals.mp3"),
+        ]
+    )
+    run_ffmpeg(
+        [
+            "-y",
+            "-i",
+            str(stereo_path),
+            "-af",
+            "pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c1-0.5*c0",
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            f"{MP3_BITRATE}k",
+            str(source_dir / "no_vocals.mp3"),
+        ]
+    )
+
+
+def run_ffmpeg(arguments: list[str]) -> None:
+    completed = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", *arguments],
+        capture_output=True,
+        text=True,
+        timeout=MAX_PROCESS_SECONDS,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "FFmpeg gagal memproses audio.")[-1200:]
+        raise RuntimeError(detail)
 
 
 def set_job_status(job_id: str, status: str, **fields: str) -> None:

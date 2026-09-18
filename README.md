@@ -76,15 +76,15 @@ pip install -r requirements.txt
 uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-Set `VITE_SEPARATION_API_URL=http://127.0.0.1:8000` in the frontend environment. The first Demucs run downloads the selected model; use Docker with `backend/Dockerfile` for a reproducible deployment.
+Set `VITE_SEPARATION_API_URL=http://127.0.0.1:8000` in the frontend environment. The default `ffmpeg_center` engine is lightweight and does not download a model; use Docker with `backend/Dockerfile` for a reproducible deployment.
 
-Set `DEMUCS_DEVICE=cpu` when a deployment has no GPU/MPS device. The deployment defaults to the lighter quantized `mdx_q` model with `DEMUCS_SEGMENT=1` to keep CPU/memory usage practical on Render free tier. Change `DEMUCS_MODEL` and `DEMUCS_SEGMENT` only when the service has enough memory. Change `DEMUCS_MP3_BITRATE` to `96`, `128`, or `160` to trade file size against quality.
+For a higher-memory deployment, set `SEPARATION_ENGINE=demucs`. Then set `DEMUCS_DEVICE=cpu` when there is no GPU/MPS device; the default model is the quantized `mdx_q` with `DEMUCS_SEGMENT=1`. Change `DEMUCS_MODEL` and `DEMUCS_SEGMENT` only when the service has enough memory. Change `DEMUCS_MP3_BITRATE` to `96`, `128`, or `160` to trade file size against quality.
 
 ## Deployment
 
 The Vite frontend is configured for Vercel through `vercel.json`. Set `VITE_SEPARATION_API_URL` in Vercel to the public Render URL of the backend, for example `https://indo-audio-separation-api.onrender.com`.
 
-The Demucs backend is configured for Render through `render.yaml` and `backend/Dockerfile`. Set `SEPARATION_CORS_ORIGINS` on Render to the deployed Vercel URL, then deploy the frontend so its browser requests are allowed by the API.
+The backend is configured for Render through `render.yaml` and `backend/Dockerfile`. Set `SEPARATION_CORS_ORIGINS` on Render to the deployed Vercel URL, then deploy the frontend so its browser requests are allowed by the API.
 
 ## I want to use a custom domain - is that possible?
 
