@@ -1,4 +1,4 @@
-"""Small Demucs HTTP service for AI vocal/instrumental separation."""
+"""Small HTTP service for vocal/instrumental separation."""
 
 from __future__ import annotations
 
@@ -25,7 +25,11 @@ MODEL = os.getenv("DEMUCS_MODEL", "mdx_q")
 DEVICE = os.getenv("DEMUCS_DEVICE")
 SEGMENT = os.getenv("DEMUCS_SEGMENT", "1")
 ENGINE = os.getenv("SEPARATION_ENGINE", "ffmpeg_center").strip().lower()
-OUTPUT_KEY = MODEL if ENGINE == "demucs" else "stems"
+MDX_MODEL = os.getenv("MDX_MODEL", "UVR_MDXNET_KARA_2.onnx")
+MDX_MODEL_DIR = Path(os.getenv("MDX_MODEL_DIR", str(STORAGE_DIR / "models")))
+MDX_SEGMENT_SIZE = int(os.getenv("MDX_SEGMENT_SIZE", "256"))
+MDX_BATCH_SIZE = int(os.getenv("MDX_BATCH_SIZE", "1"))
+OUTPUT_KEY = MODEL if ENGINE == "demucs" else "mdxnet" if ENGINE == "mdxnet" else "stems"
 MP3_BITRATE = int(os.getenv("DEMUCS_MP3_BITRATE", "128"))
 MP3_PRESET = int(os.getenv("DEMUCS_MP3_PRESET", "7"))
 MAX_UPLOAD_MB = int(os.getenv("SEPARATION_MAX_UPLOAD_MB", "50"))
@@ -59,7 +63,8 @@ app.add_middleware(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "engine": ENGINE, "model": MODEL}
+    model = MDX_MODEL if ENGINE == "mdxnet" else MODEL
+    return {"status": "ok", "engine": ENGINE, "model": model}
 
 
 @app.post("/api/separate")
@@ -139,7 +144,10 @@ def save_upload(file: UploadFile, destination: Path) -> None:
 def process_job(job_id: str, input_path: Path, output_dir: Path, job_dir: Path) -> None:
     set_job_status(job_id, "processing")
     try:
-        if ENGINE == "demucs":
+        if ENGINE == "mdxnet":
+            run_mdxnet(input_path, output_dir)
+            stems_dir = output_dir / "mdxnet" / "source"
+        elif ENGINE == "demucs":
             run_demucs(input_path, output_dir)
             stems_dir = output_dir / MODEL / "source"
         else:
@@ -205,6 +213,49 @@ def run_demucs(input_path: Path, output_dir: Path) -> None:
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "Demucs gagal memproses audio.")[-1200:]
         raise RuntimeError(detail)
+
+
+def run_mdxnet(input_path: Path, output_dir: Path) -> None:
+    """Run one MDX-Net model through audio-separator and normalize its outputs."""
+    try:
+        from audio_separator.separator import Separator
+    except ImportError as exc:
+        raise RuntimeError("Paket audio-separator belum terpasang.") from exc
+
+    source_dir = output_dir / "mdxnet" / "source"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    MDX_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    separator = Separator(
+        output_dir=str(source_dir),
+        model_file_dir=str(MDX_MODEL_DIR),
+        output_format="MP3",
+        output_bitrate=f"{MP3_BITRATE}k",
+        mdx_params={
+            "hop_length": 1024,
+            "segment_size": MDX_SEGMENT_SIZE,
+            "overlap": 0.25,
+            "batch_size": MDX_BATCH_SIZE,
+            "enable_denoise": False,
+        },
+    )
+    separator.load_model(model_filename=MDX_MODEL)
+    output_names = {"Vocals": "vocals", "Instrumental": "no_vocals"}
+    generated = separator.separate(str(input_path), output_names)
+
+    targets = {
+        "vocals": source_dir / "vocals.mp3",
+        "instrumental": source_dir / "no_vocals.mp3",
+    }
+    for generated_name in generated:
+        generated_path = Path(generated_name)
+        label = generated_path.stem.lower()
+        target = targets["vocals"] if "vocal" in label else targets["instrumental"] if "instrument" in label or "no_vocal" in label else None
+        if target is not None and generated_path.is_file() and generated_path.resolve() != target.resolve():
+            shutil.move(str(generated_path), str(target))
+
+    missing = [name for name, path in targets.items() if not path.is_file()]
+    if missing:
+        raise RuntimeError(f"MDX-Net tidak menghasilkan stem: {', '.join(missing)}.")
 
 
 def run_center_side_separation(input_path: Path, output_dir: Path) -> None:

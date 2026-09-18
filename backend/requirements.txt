@@ -1,5 +1,6 @@
 demucs>=4.0.1,<5
 diffq>=0.2,<1
+audio-separator[cpu]>=0.44,<1
 numpy>=1.26,<3
 fastapi>=0.115,<1
 python-multipart>=0.0.9,<1

@@ -76,9 +76,9 @@ pip install -r requirements.txt
 uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-Set `VITE_SEPARATION_API_URL=http://127.0.0.1:8000` in the frontend environment. The default `ffmpeg_center` engine is lightweight and does not download a model; use Docker with `backend/Dockerfile` for a reproducible deployment.
+Set `VITE_SEPARATION_API_URL=http://127.0.0.1:8000` in the frontend environment. For model-based separation, use Docker with `backend/Dockerfile` for a reproducible deployment. Set `SEPARATION_ENGINE=mdxnet` to use the MDX-Net ONNX model through `audio-separator`.
 
-For a higher-memory deployment, set `SEPARATION_ENGINE=demucs`. Then set `DEMUCS_DEVICE=cpu` when there is no GPU/MPS device; the default model is the quantized `mdx_q` with `DEMUCS_SEGMENT=1`. Change `DEMUCS_MODEL` and `DEMUCS_SEGMENT` only when the service has enough memory. Change `DEMUCS_MP3_BITRATE` to `96`, `128`, or `160` to trade file size against quality.
+The Render configuration uses `MDX_MODEL=UVR_MDXNET_KARA_2.onnx`, `MDX_SEGMENT_SIZE=256`, and `MDX_BATCH_SIZE=1` to limit memory use. `SEPARATION_ENGINE=ffmpeg_center` remains available as a fast fallback, while `SEPARATION_ENGINE=demucs` is available for higher-memory deployments. Change `DEMUCS_MP3_BITRATE` to `96`, `128`, or `160` to trade file size against quality.
 
 ## Deployment
 
