@@ -8,11 +8,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -31,6 +32,8 @@ MAX_PROCESS_SECONDS = int(os.getenv("SEPARATION_TIMEOUT_MINUTES", "30")) * 60
 
 ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".webm"}
 JOB_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
+jobs: dict[str, dict[str, str]] = {}
+jobs_lock = threading.Lock()
 
 app = FastAPI(title="IndoMusika Demucs Separation API", version="1.0.0")
 
@@ -52,12 +55,12 @@ app.add_middleware(
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
+async def health() -> dict[str, str]:
     return {"status": "ok", "model": MODEL}
 
 
 @app.post("/api/separate")
-def separate(file: UploadFile = File(...)) -> dict[str, str]:
+def separate(file: UploadFile = File(...), background_tasks: BackgroundTasks = None) -> dict[str, str]:
     cleanup_expired_jobs()
 
     suffix = Path(file.filename or "audio.wav").suffix.lower()
@@ -72,6 +75,67 @@ def separate(file: UploadFile = File(...)) -> dict[str, str]:
 
     try:
         save_upload(file, input_path)
+        with jobs_lock:
+            jobs[job_id] = {"status": "queued"}
+        if background_tasks is None:
+            raise HTTPException(status_code=500, detail="Background job runner tidak tersedia.")
+        background_tasks.add_task(process_job, job_id, input_path, output_dir, job_dir)
+        return {
+            "job_id": job_id,
+            "status": "queued",
+            "status_url": f"/api/jobs/{job_id}",
+        }
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="Proses AI melewati batas waktu 30 menit.") from exc
+    except HTTPException:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise
+    except Exception as exc:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        file.file.close()
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str) -> dict[str, str]:
+    if not JOB_ID_PATTERN.fullmatch(job_id):
+        raise HTTPException(status_code=404, detail="Job tidak ditemukan.")
+
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job tidak ditemukan atau sudah kedaluwarsa.")
+    return {"job_id": job_id, **job}
+
+
+@app.get("/api/files/{job_id}/{stem_name}")
+def download_stem(job_id: str, stem_name: str) -> FileResponse:
+    if not JOB_ID_PATTERN.fullmatch(job_id) or stem_name not in {"vocals.mp3", "instrumental.mp3"}:
+        raise HTTPException(status_code=404, detail="File tidak ditemukan.")
+
+    model_dir = STORAGE_DIR / job_id / "output" / MODEL / "source"
+    source_name = "vocals.mp3" if stem_name == "vocals.mp3" else "no_vocals.mp3"
+    path = model_dir / source_name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File tidak ditemukan atau sudah kedaluwarsa.")
+
+    return FileResponse(path, media_type="audio/mpeg", filename=stem_name)
+
+
+def save_upload(file: UploadFile, destination: Path) -> None:
+    total = 0
+    with destination.open("wb") as output:
+        while chunk := file.file.read(1024 * 1024):
+            total += len(chunk)
+            if total > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail=f"Ukuran file melebihi batas {MAX_UPLOAD_MB} MB.")
+            output.write(chunk)
+
+
+def process_job(job_id: str, input_path: Path, output_dir: Path, job_dir: Path) -> None:
+    set_job_status(job_id, "processing")
+    try:
         command = [
             sys.executable,
             "-m",
@@ -97,55 +161,37 @@ def separate(file: UploadFile = File(...)) -> dict[str, str]:
         )
         if completed.returncode != 0:
             error_tail = (completed.stderr or completed.stdout or "Demucs gagal memproses audio.")[-1200:]
-            raise HTTPException(status_code=502, detail=error_tail)
+            set_job_status(job_id, "failed", detail=error_tail)
+            shutil.rmtree(job_dir, ignore_errors=True)
+            return
 
         vocals_path = output_dir / MODEL / "source" / "vocals.mp3"
         instrumental_path = output_dir / MODEL / "source" / "no_vocals.mp3"
         if not vocals_path.is_file() or not instrumental_path.is_file():
-            raise HTTPException(status_code=502, detail="Demucs selesai tetapi stem output tidak ditemukan.")
+            set_job_status(job_id, "failed", detail="Demucs selesai tetapi stem output tidak ditemukan.")
+            shutil.rmtree(job_dir, ignore_errors=True)
+            return
 
-        return {
-            "job_id": job_id,
-            "model": MODEL,
-            "format": "mp3",
-            "bitrate": str(MP3_BITRATE),
-            "vocals_url": f"/api/files/{job_id}/vocals.mp3",
-            "instrumental_url": f"/api/files/{job_id}/instrumental.mp3",
-        }
-    except subprocess.TimeoutExpired as exc:
-        raise HTTPException(status_code=504, detail="Proses AI melewati batas waktu 30 menit.") from exc
-    except HTTPException:
+        set_job_status(
+            job_id,
+            "complete",
+            model=MODEL,
+            format="mp3",
+            bitrate=str(MP3_BITRATE),
+            vocals_url=f"/api/files/{job_id}/vocals.mp3",
+            instrumental_url=f"/api/files/{job_id}/instrumental.mp3",
+        )
+    except subprocess.TimeoutExpired:
+        set_job_status(job_id, "failed", detail="Proses AI melewati batas waktu 30 menit.")
         shutil.rmtree(job_dir, ignore_errors=True)
-        raise
     except Exception as exc:
+        set_job_status(job_id, "failed", detail=str(exc))
         shutil.rmtree(job_dir, ignore_errors=True)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    finally:
-        file.file.close()
 
 
-@app.get("/api/files/{job_id}/{stem_name}")
-def download_stem(job_id: str, stem_name: str) -> FileResponse:
-    if not JOB_ID_PATTERN.fullmatch(job_id) or stem_name not in {"vocals.mp3", "instrumental.mp3"}:
-        raise HTTPException(status_code=404, detail="File tidak ditemukan.")
-
-    model_dir = STORAGE_DIR / job_id / "output" / MODEL / "source"
-    source_name = "vocals.mp3" if stem_name == "vocals.mp3" else "no_vocals.mp3"
-    path = model_dir / source_name
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="File tidak ditemukan atau sudah kedaluwarsa.")
-
-    return FileResponse(path, media_type="audio/mpeg", filename=stem_name)
-
-
-def save_upload(file: UploadFile, destination: Path) -> None:
-    total = 0
-    with destination.open("wb") as output:
-        while chunk := file.file.read(1024 * 1024):
-            total += len(chunk)
-            if total > MAX_UPLOAD_BYTES:
-                raise HTTPException(status_code=413, detail=f"Ukuran file melebihi batas {MAX_UPLOAD_MB} MB.")
-            output.write(chunk)
+def set_job_status(job_id: str, status: str, **fields: str) -> None:
+    with jobs_lock:
+        jobs[job_id] = {"status": status, **fields}
 
 
 def cleanup_expired_jobs() -> None:

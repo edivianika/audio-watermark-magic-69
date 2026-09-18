@@ -14,6 +14,13 @@ type SeparationResponse = {
   bitrate?: string;
 };
 
+type SeparationJob = {
+  job_id: string;
+  status: "queued" | "processing" | "complete" | "failed";
+  status_url?: string;
+  detail?: string;
+} & Partial<SeparationResponse>;
+
 const DEFAULT_PRODUCTION_API_URL = "https://indo-audio-separation-api.onrender.com";
 
 /** Send the source to the configured Demucs service and retrieve both stems. */
@@ -34,16 +41,24 @@ export const splitStereoAudio = async (file: File): Promise<SplitAudioResult> =>
   }
 
   const responseText = await response.text();
-  let payload: SeparationResponse | { detail?: string } | null = null;
+  let payload: SeparationJob | null = null;
   try {
-    payload = JSON.parse(responseText) as SeparationResponse | { detail?: string };
+    payload = JSON.parse(responseText) as SeparationJob;
   } catch {
     // Reverse proxies can return an HTML/text error instead of JSON.
   }
 
-  if (!response.ok || !payload || !("vocals_url" in payload) || !("instrumental_url" in payload) || !("format" in payload)) {
-    const detail = payload && "detail" in payload ? payload.detail : responseText.slice(0, 240).trim();
+  if (!response.ok || !payload || !payload.job_id) {
+    const detail = payload?.detail || responseText.slice(0, 240).trim();
     throw new Error(`API separation ${response.status}: ${detail || "Service AI gagal memisahkan audio."}`);
+  }
+
+  if (payload.status !== "complete") {
+    payload = await waitForJob(payload, apiUrl);
+  }
+
+  if (!payload.vocals_url || !payload.instrumental_url || !payload.format || !payload.model) {
+    throw new Error("Service AI selesai tanpa mengembalikan kedua file stem.");
   }
 
   const vocalUrl = new URL(payload.vocals_url, apiUrl).toString();
@@ -64,4 +79,29 @@ export const splitStereoAudio = async (file: File): Promise<SplitAudioResult> =>
   ]);
 
   return { vocal, instrumental, model: payload.model, format: payload.format, bitrate: payload.bitrate };
+};
+
+const waitForJob = async (initialJob: SeparationJob, apiUrl: string): Promise<SeparationJob> => {
+  const statusUrl = new URL(initialJob.status_url || `/api/jobs/${initialJob.job_id}`, apiUrl).toString();
+  for (let attempt = 0; attempt < 900; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    const response = await fetch(statusUrl);
+    const responseText = await response.text();
+    let job: SeparationJob | null = null;
+    try {
+      job = JSON.parse(responseText) as SeparationJob;
+    } catch {
+      // The next poll can recover from a transient proxy response.
+    }
+
+    if (!response.ok || !job) {
+      throw new Error(`Status job separation tidak dapat dibaca (HTTP ${response.status}).`);
+    }
+    if (job.status === "failed") {
+      throw new Error(job.detail || "Service AI gagal memisahkan audio.");
+    }
+    if (job.status === "complete") return job;
+  }
+
+  throw new Error("Proses AI belum selesai setelah 30 menit.");
 };
