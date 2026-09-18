@@ -23,19 +23,21 @@ const Index = () => {
   };
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-4xl px-3 py-3 sm:px-6 sm:py-6">
+    <div className="mx-auto min-h-screen w-full max-w-4xl px-2.5 py-2.5 sm:px-6 sm:py-6">
       <Tabs defaultValue="watermarker" className="space-y-3 sm:space-y-6">
-        <div className="grid grid-cols-[1fr_auto] gap-2">
-          <TabsList className="grid h-10 w-full grid-cols-3 rounded-md bg-muted/60 p-1">
-            <TabsTrigger value="watermarker" className="h-8 text-xs sm:text-sm">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
+          <TabsList className="grid h-10 min-w-0 w-full grid-cols-3 overflow-hidden rounded-md bg-muted/60 p-1">
+            <TabsTrigger value="watermarker" aria-label="Compress" className="h-8 min-w-0 overflow-hidden px-1 text-[11px] tracking-tight sm:px-3 sm:text-sm">
               Compress
             </TabsTrigger>
-            <TabsTrigger value="manage" className="h-8 text-xs sm:text-sm">
-              Watermark
+            <TabsTrigger value="manage" aria-label="Watermark" className="h-8 min-w-0 overflow-hidden px-1 text-[11px] tracking-tight sm:px-3 sm:text-sm">
+              <span className="sm:hidden">Mark</span>
+              <span className="hidden sm:inline">Watermark</span>
             </TabsTrigger>
-            <TabsTrigger value="split" className="h-8 gap-1 text-xs sm:text-sm">
-              <Mic2 className="h-3.5 w-3.5" />
-              Split Vocal
+            <TabsTrigger value="split" aria-label="Split Vocal" className="h-8 min-w-0 gap-0.5 overflow-hidden px-1 text-[11px] tracking-tight sm:gap-1 sm:px-3 sm:text-sm">
+              <Mic2 className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
+              <span className="sm:hidden">Split</span>
+              <span className="hidden sm:inline">Split Vocal</span>
             </TabsTrigger>
           </TabsList>
           <Button

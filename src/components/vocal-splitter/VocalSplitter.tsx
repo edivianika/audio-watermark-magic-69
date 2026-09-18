@@ -1,7 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Info, Loader2, Mic2, Music2, Sparkles } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import FileUploader from "@/components/audio-watermarker/FileUploader";
 import ProcessedFilesList from "@/components/audio-watermarker/ProcessedFilesList";
@@ -98,48 +96,20 @@ const VocalSplitter: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-5">
-      <Card className="overflow-hidden border-border/70 bg-card/70 shadow-sm">
-        <CardContent className="p-0">
-          <div className="relative overflow-hidden border-b border-border/70 bg-gradient-to-br from-violet-500/10 via-background to-cyan-500/10 px-5 py-6 sm:px-8 sm:py-8">
-            <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full bg-violet-400/15 blur-3xl" />
-            <div className="relative flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-500 text-white shadow-lg shadow-violet-500/20">
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-violet-600 dark:text-violet-300">Stem Lab</p>
-                <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Pisahkan vocal & instrumental dengan AI</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Buat dua stem audio menggunakan Demucs melalui service separation yang dikonfigurasi untuk aplikasi ini.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-3 border-b border-border/70 p-5 sm:grid-cols-2 sm:p-8">
-            <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium"><Mic2 className="h-4 w-4 text-violet-500" /> Vocal</div>
-              <p className="text-xs leading-5 text-muted-foreground">Model AI mengisolasi vokal dari mix, termasuk vokal yang tidak berada persis di tengah.</p>
-            </div>
-            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium"><Music2 className="h-4 w-4 text-cyan-600" /> Instrumental</div>
-              <p className="text-xs leading-5 text-muted-foreground">Accompaniment hasil pemisahan AI: musik tanpa stem vocal utama.</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
+    <div className="mx-auto w-full max-w-4xl space-y-3 sm:space-y-5">
       <FileUploader {...uploaderProps} />
 
       {isProcessing && (
-        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
-          <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="flex items-center gap-2 font-medium"><Loader2 className="h-4 w-4 animate-spin text-violet-500" /> Memisahkan audio {processingStatus.current} dari {processingStatus.total}</span>
-            <span className="font-semibold text-violet-600 dark:text-violet-300">{progress}%</span>
+        <div className="rounded-md border border-slate-300 bg-white/50 px-3 py-2 dark:border-gray-700 dark:bg-muted/20">
+          <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+            <span className="flex min-w-0 items-center gap-2 font-medium">
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-500" />
+              <span className="truncate">Memisahkan audio {processingStatus.current} dari {processingStatus.total}</span>
+            </span>
+            <span className="shrink-0 font-semibold text-blue-600 dark:text-blue-400">{progress}%</span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-violet-500/10">
-            <div className="h-full rounded-full bg-violet-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+          <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div className="h-full rounded-full bg-blue-500 transition-all duration-300" style={{ width: `${progress}%` }} />
           </div>
         </div>
       )}
@@ -152,11 +122,6 @@ const VocalSplitter: React.FC = () => {
           idPrefix="split-audio"
         />
       )}
-
-      <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs leading-5 text-muted-foreground">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-        <p><span className="font-medium text-foreground">Catatan:</span> Demucs membutuhkan backend aktif di <code className="rounded bg-amber-500/10 px-1">VITE_SEPARATION_API_URL</code>. Proses AI lebih lambat daripada center/side, tetapi hasilnya jauh lebih sesuai untuk vocal remover.</p>
-      </div>
     </div>
   );
 };
