@@ -80,6 +80,12 @@ Set `VITE_SEPARATION_API_URL=http://127.0.0.1:8000` in the frontend environment.
 
 Set `DEMUCS_DEVICE=cpu` when a deployment has no GPU/MPS device. If unset, Demucs automatically selects the best available device. Change `DEMUCS_MP3_BITRATE` to `96`, `128`, or `160` to trade file size against quality.
 
+## Deployment
+
+The Vite frontend is configured for Vercel through `vercel.json`. Set `VITE_SEPARATION_API_URL` in Vercel to the public Render URL of the backend, for example `https://indo-audio-separation-api.onrender.com`.
+
+The Demucs backend is configured for Render through `render.yaml` and `backend/Dockerfile`. Set `SEPARATION_CORS_ORIGINS` on Render to the deployed Vercel URL, then deploy the frontend so its browser requests are allowed by the API.
+
 ## I want to use a custom domain - is that possible?
 
 We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)

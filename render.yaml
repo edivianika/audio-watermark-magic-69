@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: indo-audio-separation-api
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    autoDeployTrigger: commit
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    envVars:
+      - key: DEMUCS_DEVICE
+        value: cpu
+      - key: DEMUCS_MP3_BITRATE
+        value: "128"
+      - key: SEPARATION_MAX_UPLOAD_MB
+        value: "50"
+      - key: SEPARATION_TIMEOUT_MINUTES
+        value: "30"
+      - key: SEPARATION_CORS_ORIGINS
+        sync: false
